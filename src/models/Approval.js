@@ -1,10 +1,12 @@
 class Approval {
-    approval_id;
-    application_id;
-    approver_op_user_id;
-    approval_status;
-    approval_date;
-    notes;
+    constructor(data = {}) {
+        this.approval_id = data.approval_id || null;
+        this.application_id = data.application_id || null;
+        this.approver_op_user_id = data.approver_op_user_id || null;
+        this.approval_status = data.approval_status || '';
+        this.approval_date = data.approval_date || null;
+        this.notes = data.notes || '';
+    }
 }
 
 module.exports = Approval;
