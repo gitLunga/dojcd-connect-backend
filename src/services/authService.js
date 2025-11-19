@@ -106,6 +106,112 @@ class AuthService {
 
         return userResponse;
     }
+
+    // Login Client User
+    async loginClientUser(loginData) {
+        const { email, password } = loginData;
+
+        // Find user by email
+        const result = await db.query(
+            `SELECT * FROM client_user WHERE email = $1`,
+            [email]
+        );
+
+        if (result.rows.length === 0) {
+            throw new Error('Invalid email or password');
+        }
+
+        const user = new ClientUser(result.rows[0]);
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            throw new Error('Invalid email or password');
+        }
+
+        // Remove password hash from response
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+
+        return userResponse;
+    }
+
+    // Login Operational User
+    async loginOperationalUser(loginData) {
+        const { email, password } = loginData;
+
+        // Find user by email
+        const result = await db.query(
+            `SELECT * FROM operational_user WHERE email = $1`,
+            [email]
+        );
+
+        if (result.rows.length === 0) {
+            throw new Error('Invalid email or password');
+        }
+
+        const user = new OperationalUser(result.rows[0]);
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            throw new Error('Invalid email or password');
+        }
+
+        // Remove password hash from response
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+
+        return userResponse;
+    }
+
+    // Generic login that tries both tables
+    async loginUser(loginData) {
+        const { email, password } = loginData;
+
+        // Try client_user first
+        let result = await db.query(
+            `SELECT *, 'client' as user_type FROM client_user WHERE email = $1`,
+            [email]
+        );
+
+        // If not found in client_user, try operational_user
+        if (result.rows.length === 0) {
+            result = await db.query(
+                `SELECT *, 'operational' as user_type FROM operational_user WHERE email = $1`,
+                [email]
+            );
+        }
+
+        if (result.rows.length === 0) {
+            throw new Error('Invalid email or password');
+        }
+
+        const userData = result.rows[0];
+        let user;
+
+        if (userData.user_type === 'client') {
+            user = new ClientUser(userData);
+        } else {
+            user = new OperationalUser(userData);
+        }
+
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            throw new Error('Invalid email or password');
+        }
+
+        // Remove password hash from response
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+
+        // Add user_type to response
+        userResponse.user_type = userData.user_type;
+
+        return userResponse;
+    }
+
 }
 
 module.exports = new AuthService();
