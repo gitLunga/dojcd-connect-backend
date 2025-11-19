@@ -22,11 +22,11 @@ class AuthService {
 
         // Insert into database
         const query = `
-      INSERT INTO client_user 
-      (first_name, last_name, email, phone_number, persal_id, department_id, user_type, password_hash)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING client_user_id, first_name, last_name, email, user_type;
-    `;
+            INSERT INTO client_user
+            (first_name, last_name, email, phone_number, persal_id, department_id, user_type, password_hash)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING *;
+        `;
         const values = [
             first_name,
             last_name,
@@ -40,7 +40,18 @@ class AuthService {
 
         const result = await db.query(query, values);
 
-        return new ClientUser(result.rows[0]);   // return user (without password)
+        if (result.rows.length === 0) {
+            throw new Error('Registration failed - no data returned');
+        }
+
+        // Create user instance with all returned data
+        const user = new ClientUser(result.rows[0]);
+
+        // Remove password hash from response for security
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+
+        return userResponse;
     }
 }
 

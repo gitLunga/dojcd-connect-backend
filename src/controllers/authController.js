@@ -5,11 +5,20 @@ class AuthController {
         try {
             const user = await authService.registerUser(req.body);
             res.status(201).json({
+                success: true,
                 message: 'Registration successful',
-                user
+                data: {
+                    user: user
+                },
+                timestamp: new Date().toISOString()
             });
         } catch (error) {
-            res.status(400).json({ error: error.message });
+            res.status(400).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 }
