@@ -1,0 +1,47 @@
+const db = require('../config/db');
+const bcrypt = require('bcrypt');
+const ClientUser = require('../models/ClientUser');
+
+class AuthService {
+    // Register new ClientUser
+    async registerUser(userData) {
+        const { first_name, last_name, email, phone_number, persal_id,
+            department_id, user_type, password } = userData;
+
+        // Check if email already exists
+        const emailCheck = await db.query(
+            `SELECT * FROM client_user WHERE email = $1`,
+            [email]
+        );
+        if (emailCheck.rows.length > 0) {
+            throw new Error('Email already registered');
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert into database
+        const query = `
+      INSERT INTO client_user 
+      (first_name, last_name, email, phone_number, persal_id, department_id, user_type, password_hash)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      RETURNING client_user_id, first_name, last_name, email, user_type;
+    `;
+        const values = [
+            first_name,
+            last_name,
+            email,
+            phone_number,
+            persal_id,
+            department_id,
+            user_type,
+            hashedPassword
+        ];
+
+        const result = await db.query(query, values);
+
+        return new ClientUser(result.rows[0]);   // return user (without password)
+    }
+}
+
+module.exports = new AuthService();
