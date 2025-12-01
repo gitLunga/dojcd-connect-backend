@@ -6,8 +6,8 @@ const OperationalUser = require('../models/OperationalUser');
 class AuthService {
     // Register new ClientUser
     async registerUser(userData) {
-        const { first_name, last_name, email, phone_number, persal_id,
-            department_id, user_type, password } = userData;
+        const { title, first_name, last_name, email, phone_number, region, persal_id,
+            department_id, user_type, password } = userData;  // ← ADDED
 
         // Check if email already exists
         const emailCheck = await db.query(
@@ -24,15 +24,18 @@ class AuthService {
         // Insert into database
         const query = `
             INSERT INTO client_user
-            (first_name, last_name, email, phone_number, persal_id, department_id, user_type, password_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (title, first_name, last_name, email, phone_number, region, persal_id, department_id, user_type, password_hash)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *;
         `;
+
         const values = [
+            title,               // ← ADDED
             first_name,
             last_name,
             email,
             phone_number,
+            region,              // ← ADDED
             persal_id,
             department_id,
             user_type,
@@ -45,15 +48,12 @@ class AuthService {
             throw new Error('Registration failed - no data returned');
         }
 
-        // Create user instance with all returned data
         const user = new ClientUser(result.rows[0]);
 
-        // Remove password hash from response for security
-        const userResponse = { ...user };
-        delete userResponse.password_hash;
-
-        return userResponse;
+        delete user.password_hash;
+        return user;
     }
+
 
     async registerOperationalUser(userData) {
         const { first_name, last_name, email, user_role, password } = userData;
