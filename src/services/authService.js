@@ -2,13 +2,22 @@ const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const ClientUser = require('../models/ClientUser');
 const OperationalUser = require('../models/OperationalUser');
+const path = require('path');
+const fs = require('fs');
 
 class AuthService {
     // Register new ClientUser
     async registerUser(userData) {
-        const { first_name, last_name, email, phone_number, persal_id,
-            department_id, user_type, password } = userData;
+        const { title, first_name, last_name, email, phone_number, region, persal_id,
+            department_id, user_type, password,  network_provider,         // Add this
+            contract_duration_months, // Add this
+            contract_end_date,        // Add this
+            invoice_data,             // Add this
+            invoice_filename     } = userData;
 
+        if (!title || !first_name || !last_name || !email || !password || !persal_id) {
+            throw new Error('All required fields must be filled');
+        }
         // Check if email already exists
         const emailCheck = await db.query(
             `SELECT * FROM client_user WHERE email = $1`,
@@ -18,24 +27,81 @@ class AuthService {
             throw new Error('Email already registered');
         }
 
+        // Check if Persal ID already exists
+        const persalCheck = await db.query(
+            `SELECT * FROM client_user WHERE persal_id = $1`,
+            [persal_id]
+        );
+        if (persalCheck.rows.length > 0) {
+            throw new Error('Persal ID already registered');
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
+
+        let invoicePath = null;
+        if (invoice_data && invoice_filename) {
+            try {
+                // Create uploads directory if it doesn't exist
+                const uploadDir = path.join(__dirname, '../uploads/invoices');
+                if (!fs.existsSync(uploadDir)) {
+                    fs.mkdirSync(uploadDir, { recursive: true });
+                }
+
+                // Generate unique filename
+                const timestamp = Date.now();
+                const extension = path.extname(invoice_filename);
+                const uniqueFilename = `invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}${extension}`;
+                const filePath = path.join(uploadDir, uniqueFilename);
+
+                // Save file (assuming invoice_data is base64)
+                if (invoice_data.startsWith('data:')) {
+                    // Remove data URL prefix
+                    const base64Data = invoice_data.replace(/^data:image\/\w+;base64,/, '');
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    fs.writeFileSync(filePath, buffer);
+                } else {
+                    // Assume it's already base64 without prefix
+                    const buffer = Buffer.from(invoice_data, 'base64');
+                    fs.writeFileSync(filePath, buffer);
+                }
+
+                // Store relative path in database
+                invoicePath = `/uploads/invoices/${uniqueFilename}`;
+
+            } catch (error) {
+                console.error('Error saving invoice:', error);
+                throw new Error('Failed to save invoice file');
+            }
+        }
         // Insert into database
         const query = `
-            INSERT INTO client_user
-            (first_name, last_name, email, phone_number, persal_id, department_id, user_type, password_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO client_user (
+                title, first_name, last_name, email, phone_number,
+                region, persal_id, department_id, user_type,
+                network_provider, contract_duration_months,
+                contract_end_date, invoice_path, password_hash,
+                registration_status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'Pending')
                 RETURNING *;
         `;
+
         const values = [
+            title,
             first_name,
             last_name,
             email,
             phone_number,
+            region,
             persal_id,
             department_id,
             user_type,
+            network_provider,
+            contract_duration_months,
+            contract_end_date,
+            invoicePath,
             hashedPassword
         ];
 
@@ -53,6 +119,35 @@ class AuthService {
         delete userResponse.password_hash;
 
         return userResponse;
+    }
+
+    async handleInvoiceUpload(file) {
+        try {
+            // Create uploads directory if it doesn't exist
+            const uploadDir = path.join(__dirname, '../uploads/temp');
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+
+            // Generate unique filename
+            const timestamp = Date.now();
+            const uniqueFilename = `temp_invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+            const tempPath = path.join(uploadDir, uniqueFilename);
+
+            // Move uploaded file
+            fs.renameSync(file.path, tempPath);
+
+            return {
+                success: true,
+                tempPath: tempPath,
+                filename: file.originalname,
+                mimeType: file.mimetype
+            };
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            throw new Error('Failed to upload invoice');
+        }
     }
 
     async registerOperationalUser(userData) {
