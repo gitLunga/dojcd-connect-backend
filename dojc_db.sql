@@ -6,18 +6,30 @@ BEGIN;
 -- 1. Table: CLIENT_USER
 CREATE TABLE client_user (
     client_user_id SERIAL PRIMARY KEY,
-    title VARCHAR(50),                     
+    title VARCHAR(50),
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     phone_number VARCHAR(50),
-    region VARCHAR(100),                  
+    region VARCHAR(100),
     persal_id VARCHAR(50) UNIQUE,
     department_id VARCHAR(50),
     user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('Teacher', 'DOJCD_User')),
     password_hash VARCHAR(255) NOT NULL,
-    cognito_id VARCHAR(255) UNIQUE
+    cognito_id VARCHAR(255) UNIQUE,
+
+    -- New fields
+    network_provider VARCHAR(50) 
+        CHECK (network_provider IN ('MTN', 'Vodacom', 'Cell_C', 'Telkom', 'Rain')),
+    contract_duration_months INTEGER,
+    contract_end_date DATE,
+    invoice_path VARCHAR(255),
+    registration_status VARCHAR(50) 
+        DEFAULT 'Pending'
+        CHECK (registration_status IN ('Pending', 'Verified', 'Rejected')),
+    verification_notes TEXT
 );
+
 
 
 -- 2. Table: DEVICE_CATALOG
