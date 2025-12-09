@@ -33,7 +33,7 @@ class AuthService {
             [persal_id]
         );
         if (persalCheck.rows.length > 0) {
-            throw new Error('Persal ID already registered');
+            throw new Error('ID already registered');
         }
 
         // Hash password
