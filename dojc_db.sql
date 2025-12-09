@@ -14,7 +14,7 @@ CREATE TABLE client_user (
     region VARCHAR(100),
     persal_id VARCHAR(50) UNIQUE,
     department_id VARCHAR(50),
-    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('Teacher', 'DOJCD_User')),
+    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('Teacher', 'Magistrate')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE,
 
@@ -51,7 +51,7 @@ CREATE TABLE operational_user (
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Warehouse', 'Support')),
+    user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Warehouse', 'Approver')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE
 );
