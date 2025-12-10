@@ -14,7 +14,7 @@ CREATE TABLE client_user (
     region VARCHAR(100),
     persal_id VARCHAR(50) UNIQUE,
     department_id VARCHAR(50),
-    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('Teacher', 'Magistrate')),
+    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('Advocate', 'Magistrate')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE,
 
@@ -28,6 +28,9 @@ CREATE TABLE client_user (
         DEFAULT 'Pending'
         CHECK (registration_status IN ('Pending', 'Verified', 'Rejected')),
     verification_notes TEXT
+	
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 
@@ -54,6 +57,9 @@ CREATE TABLE operational_user (
     user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Warehouse', 'Approver')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE
+	
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 4. Table: APPLICATION
