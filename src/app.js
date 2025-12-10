@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -26,6 +27,10 @@ app.get('/api/test', (req, res) => {
     });
 });
 
+//authorization routes
 app.use('/api/auth', authRoutes);
+
+//admin routes
+app.use('/api/admin', adminRoutes);
 
 module.exports = app;

@@ -20,6 +20,9 @@ class ClientUser {
         this.invoice_path = data.invoice_path || null;
         this.registration_status = data.registration_status || 'Pending';
         this.verification_notes = data.verification_notes || null;
+
+        this.created_at = data.created_at || null;
+        this.updated_at = data.updated_at || null;
     }
 }
 
