@@ -4,10 +4,57 @@ const ClientUser = require('../models/ClientUser');
 const OperationalUser = require('../models/OperationalUser');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer'); // Added for file uploads
+
+
+// Configure multer for file uploads[citation:9]
+// const invoiceStorage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         const uploadDir = path.join(__dirname, '../uploads/invoices');
+//         if (!fs.existsSync(uploadDir)) {
+//             fs.mkdirSync(uploadDir, { recursive: true });
+//         }
+//         cb(null, uploadDir);
+//     },
+//     filename: (req, file, cb) => {
+//         const timestamp = Date.now();
+//         const uniqueId = uuidv4().slice(0, 8); // Generate unique ID[citation:2]
+//         const extension = path.extname(file.originalname);
+//         const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+//         const filename = `${timestamp}_${uniqueId}_${safeName}`;
+//         cb(null, filename);
+//     }
+// });
+//
+// // File filter to accept common file types
+// const fileFilter = (req, file, cb) => {
+//     const allowedTypes = [
+//         'application/pdf',
+//         'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+//         'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+//         'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+//         'text/plain', 'text/csv',
+//     ];
+//
+//     if (allowedTypes.includes(file.mimetype)) {
+//         cb(null, true);
+//     } else {
+//         cb(new Error(`Invalid file type. Allowed types: PDF, Images, Word, Excel, Text, CSV`), false);
+//     }
+// };
+//
+// const upload = multer({
+//     storage: invoiceStorage,
+//     limits: {
+//         fileSize: 10 * 1024 * 1024, // 10MB limit
+//     },
+//     fileFilter: fileFilter
+// });
+
 
 class AuthService {
     // Register new ClientUser
-    async registerUser(userData) {
+    async registerUser(userData,  invoiceFile = null) {
         const { title, first_name, last_name, email, phone_number, region, persal_id,
             department_id, user_type, password,  network_provider,         // Add this
             contract_duration_months, // Add this
@@ -39,42 +86,26 @@ class AuthService {
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-
+        // Handle invoice file if uploaded
         let invoicePath = null;
-        if (invoice_data && invoice_filename) {
-            try {
-                // Create uploads directory if it doesn't exist
-                const uploadDir = path.join(__dirname, '../uploads/invoices');
-                if (!fs.existsSync(uploadDir)) {
-                    fs.mkdirSync(uploadDir, { recursive: true });
-                }
 
-                // Generate unique filename
-                const timestamp = Date.now();
-                const extension = path.extname(invoice_filename);
-                const uniqueFilename = `invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}${extension}`;
-                const filePath = path.join(uploadDir, uniqueFilename);
+        // FIXED: Simplified file handling
+        if (invoiceFile) {
+            console.log('📁 File received:', invoiceFile);
 
-                // Save file (assuming invoice_data is base64)
-                if (invoice_data.startsWith('data:')) {
-                    // Remove data URL prefix
-                    const base64Data = invoice_data.replace(/^data:image\/\w+;base64,/, '');
-                    const buffer = Buffer.from(base64Data, 'base64');
-                    fs.writeFileSync(filePath, buffer);
-                } else {
-                    // Assume it's already base64 without prefix
-                    const buffer = Buffer.from(invoice_data, 'base64');
-                    fs.writeFileSync(filePath, buffer);
-                }
+            // Multer already saved the file, just get the path
+            // invoiceFile.path contains the full path where multer saved it
+            // invoiceFile.filename contains just the filename
 
+            if (invoiceFile.filename) {
                 // Store relative path in database
-                invoicePath = `/uploads/invoices/${uniqueFilename}`;
-
-            } catch (error) {
-                console.error('Error saving invoice:', error);
-                throw new Error('Failed to save invoice file');
+                invoicePath = `/uploads/invoices/${invoiceFile.filename}`;
+                console.log('✅ Invoice path stored:', invoicePath);
+            } else {
+                console.warn('⚠️ No filename in invoiceFile:', invoiceFile);
             }
         }
+
         // Insert into database
         const query = `
             INSERT INTO client_user (
@@ -105,6 +136,7 @@ class AuthService {
             hashedPassword
         ];
 
+
         const result = await db.query(query, values);
 
         if (result.rows.length === 0) {
@@ -121,6 +153,7 @@ class AuthService {
         return userResponse;
     }
 
+
     async handleInvoiceUpload(file) {
         try {
             // Create uploads directory if it doesn't exist
@@ -134,7 +167,7 @@ class AuthService {
             const uniqueFilename = `temp_invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
             const tempPath = path.join(uploadDir, uniqueFilename);
 
-            // Move uploaded file
+            // Move uploaded file (FormData file is already on disk)
             fs.renameSync(file.path, tempPath);
 
             return {
@@ -149,6 +182,23 @@ class AuthService {
             throw new Error('Failed to upload invoice');
         }
     }
+
+    // Helper to serve invoice files
+    // async getInvoiceFile(filename, isTemp = false) {
+    //     const folder = isTemp ? 'temp' : 'invoices';
+    //     const filePath = path.join(__dirname, `../uploads/${folder}/${filename}`);
+    //
+    //     if (!fs.existsSync(filePath)) {
+    //         throw new Error('File not found');
+    //     }
+    //
+    //     return {
+    //         path: filePath,
+    //         stats: fs.statSync(filePath),
+    //         mimeType: getMimeTypeFromExtension(path.extname(filename))
+    //     };
+    // }
+
 
     async registerOperationalUser(userData) {
         const { first_name, last_name, email, user_role, password } = userData;
@@ -307,6 +357,21 @@ class AuthService {
         return userResponse;
     }
 
+}
+
+function getMimeTypeFromExtension(extension) {
+    const extToMime = {
+        '.pdf': 'application/pdf',
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.gif': 'image/gif',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.txt': 'text/plain', '.csv': 'text/csv',
+        '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    };
+    return extToMime[extension.toLowerCase()] || 'application/octet-stream';
 }
 
 module.exports = new AuthService();

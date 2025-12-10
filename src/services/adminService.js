@@ -22,7 +22,7 @@ class AdminService {
                     registration_status,
                     verification_notes
                  FROM client_user 
-                 ORDER BY client_user_id DESC`,
+                 ORDER BY created_at DESC`,
                 []
             );
 
@@ -78,7 +78,7 @@ class AdminService {
                     email,
                     user_role
                  FROM operational_user 
-                 ORDER BY op_user_id DESC`,
+                 ORDER BY created_at DESC`,
                 []
             );
 
