@@ -50,7 +50,30 @@ const upload = multer({
 class AuthController {
     async register(req, res) {
         try {
-            // Use multer middleware to handle the file upload
+            const userData = req.body;
+
+            console.log('📥 Register user data:', userData);
+
+            // IMPORTANT: Do NOT pass invoiceFile here
+            const user = await authService.registerUser(userData);
+
+            return res.status(201).json({
+                success: true,
+                message: 'Registration successful',
+                user
+            });
+
+        } catch (error) {
+            console.error('Registration error:', error);
+            return res.status(400).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async completeProfile(req, res) {
+        try {
             upload.single('invoice_file')(req, res, async (err) => {
                 if (err) {
                     return res.status(400).json({
@@ -59,38 +82,38 @@ class AuthController {
                     });
                 }
 
-                try {
-                    // Extract user data from form fields
-                    const userData = req.body;
-                    const invoiceFile = req.file; // This is the uploaded file
+                const { clientUserId } = req.params;
+                const profileData = req.body;
+                const invoiceFile = req.file;
 
-                    console.log('Received user data:', userData);
-                    console.log('Received file:', invoiceFile ? invoiceFile.originalname : 'No file');
-
-                    // IMPORTANT: Call service with both parameters
-                    const user = await authService.registerUser(userData, invoiceFile);
-
-                    res.status(201).json({
-                        success: true,
-                        message: 'Registration successful',
-                        user: user
-                    });
-                } catch (error) {
-                    console.error('Registration error:', error);
-                    res.status(400).json({
+                if (!invoiceFile) {
+                    return res.status(400).json({
                         success: false,
-                        message: error.message
+                        message: 'Invoice file is required'
                     });
                 }
+
+                const updatedUser = await authService.completeProfile(
+                    clientUserId,
+                    profileData,
+                    invoiceFile
+                );
+
+                res.status(200).json({
+                    success: true,
+                    message: 'Profile completed successfully',
+                    user: updatedUser
+                });
             });
         } catch (error) {
-            console.error('Controller error:', error);
+            console.error('Complete profile error:', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
             });
         }
     }
+
 
     async registerOperational(req, res) {
         try {

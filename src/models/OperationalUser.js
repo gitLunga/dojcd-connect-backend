@@ -1,6 +1,7 @@
 class OperationalUser {
     constructor(data = {}) {
         this.op_user_id = data.op_user_id || null;
+        this.title = data.title || null;
         this.first_name = data.first_name || '';
         this.last_name = data.last_name || '';
         this.email = data.email || '';

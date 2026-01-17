@@ -14,6 +14,11 @@ router.get('/test', (req, res) => {
 
 //registration routes
 router.post('/register', (req, res) => authController.register(req, res));
+router.post(
+    '/complete-profile/:clientUserId',
+    (req, res) => authController.completeProfile(req, res)
+);
+
 router.post('/register-operational', (req, res) => authController.registerOperational(req, res));
 
 // Login routes
