@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 
+//Sphelele
+router.get('/all-users', (req, res) => adminController.getAllUsers(req, res));
 // Client user routes
 router.get('/client-users', (req, res) => adminController.getAllClientUsers(req, res));
 router.get('/client-users/:id', (req, res) => adminController.getClientUserById(req, res));

@@ -1,6 +1,25 @@
 const adminService = require('../services/adminService');
 
 class AdminController {
+
+    //Sphelele
+    async getAllUsers(req, res) {
+        try {
+            const users = await adminService.getAllUsers();
+            return res.status(200).json({
+                success: true,
+                message: 'All registered users fetched successfully',
+                data: users,
+            });
+        } catch (error) {
+            console.error('❌ getAllUsers controller error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to fetch registered users',
+            });
+        }
+    }
+
     // Get all client users
     async getAllClientUsers(req, res) {
         try {

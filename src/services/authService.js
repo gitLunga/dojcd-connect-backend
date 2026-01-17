@@ -6,52 +6,6 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer'); // Added for file uploads
 
-
-// Configure multer for file uploads[citation:9]
-// const invoiceStorage = multer.diskStorage({
-//     destination: (req, file, cb) => {
-//         const uploadDir = path.join(__dirname, '../uploads/invoices');
-//         if (!fs.existsSync(uploadDir)) {
-//             fs.mkdirSync(uploadDir, { recursive: true });
-//         }
-//         cb(null, uploadDir);
-//     },
-//     filename: (req, file, cb) => {
-//         const timestamp = Date.now();
-//         const uniqueId = uuidv4().slice(0, 8); // Generate unique ID[citation:2]
-//         const extension = path.extname(file.originalname);
-//         const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-//         const filename = `${timestamp}_${uniqueId}_${safeName}`;
-//         cb(null, filename);
-//     }
-// });
-//
-// // File filter to accept common file types
-// const fileFilter = (req, file, cb) => {
-//     const allowedTypes = [
-//         'application/pdf',
-//         'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-//         'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-//         'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-//         'text/plain', 'text/csv',
-//     ];
-//
-//     if (allowedTypes.includes(file.mimetype)) {
-//         cb(null, true);
-//     } else {
-//         cb(new Error(`Invalid file type. Allowed types: PDF, Images, Word, Excel, Text, CSV`), false);
-//     }
-// };
-//
-// const upload = multer({
-//     storage: invoiceStorage,
-//     limits: {
-//         fileSize: 10 * 1024 * 1024, // 10MB limit
-//     },
-//     fileFilter: fileFilter
-// });
-
-
 class AuthService {
     // Register new ClientUser
     async registerUser(userData,  invoiceFile = null) {

@@ -1,6 +1,54 @@
 const db = require('../config/db');
 
 class AdminService {
+
+    //Sphelele
+    async getAllUsers() {
+        try {
+            const query = `
+                SELECT *
+                FROM (
+                         SELECT
+                             client_user_id AS id,
+                             'client' AS user_category,
+                             user_type AS role,        -- Advocate / Magistrate
+                             title,
+                             first_name,
+                             last_name,
+                             email,
+                             phone_number,
+                             region,
+                             created_at
+                         FROM client_user
+
+                         UNION ALL
+
+                         SELECT
+                             op_user_id AS id,
+                             'operational' AS user_category,
+                             user_role AS role,        -- Admin / MTN_Staff / etc
+                             title,
+                             first_name,
+                             last_name,
+                             email,
+                             NULL AS phone_number,
+                             NULL AS region,
+                             created_at
+                         FROM operational_user
+                     ) users
+                ORDER BY created_at DESC;
+
+
+            `;
+
+            const result = await db.query(query);
+            return result.rows;
+        } catch (error) {
+            console.error('❌ AdminService.getAllUsers error:', error);
+            throw new Error('Failed to fetch all users');
+        }
+    }
+
     // Get all client users
     async getAllClientUsers() {
         try {
