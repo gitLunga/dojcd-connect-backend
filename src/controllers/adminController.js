@@ -224,18 +224,22 @@ class AdminController {
             const { id } = req.params;
             const { status, notes } = req.body;
 
+
+            const normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+
             // Validate status
-            const validStatuses = ['Pending', 'Verified', 'Rejected'];
-            if (!validStatuses.includes(status)) {
+            const validStatuses = ['Pending', 'Verified', 'Rejected', 'Profile_Completed'];
+            if (!validStatuses.includes(normalizedStatus)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Invalid status. Must be: Pending, Verified, or Rejected',
+                    message: `Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`,
                     data: null,
                     timestamp: new Date().toISOString()
                 });
             }
 
-            const updatedUser = await adminService.updateUserRegistrationStatus(id, status, notes);
+
+            const updatedUser = await adminService.updateUserRegistrationStatus(id, normalizedStatus, notes);
 
             res.status(200).json({
                 success: true,
