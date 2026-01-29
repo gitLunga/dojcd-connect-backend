@@ -1,6 +1,72 @@
 const db = require('../config/db');
+const path = require('path');
+const fs = require('fs');
 
 class AdminService {
+    async getClientInvoice(userId) {
+        try {
+            const result = await db.query(
+                `SELECT invoice_path 
+                 FROM client_user 
+                 WHERE client_user_id = $1`,
+                [userId]
+            );
+
+            if (result.rows.length === 0 || !result.rows[0].invoice_path) {
+                throw new Error('Invoice not found');
+            }
+
+            const invoicePath = result.rows[0].invoice_path;
+            const fullPath = path.join(__dirname, '..', invoicePath);
+
+            // Check if file exists
+            if (!fs.existsSync(fullPath)) {
+                throw new Error('Invoice file not found on server');
+            }
+
+            return {
+                filePath: fullPath,
+                fileName: path.basename(invoicePath),
+                mimeType: this.getMimeType(fullPath)
+            };
+        } catch (error) {
+            throw new Error(`Error fetching invoice: ${error.message}`);
+        }
+    }
+
+    // NEW METHOD: Download invoice
+    async downloadInvoice(userId, res) {
+        try {
+            const invoiceInfo = await this.getClientInvoice(userId);
+
+            // Set appropriate headers
+            res.setHeader('Content-Disposition', `attachment; filename="${invoiceInfo.fileName}"`);
+            res.setHeader('Content-Type', invoiceInfo.mimeType);
+
+            // Stream the file
+            const fileStream = fs.createReadStream(invoiceInfo.filePath);
+            fileStream.pipe(res);
+
+            return invoiceInfo;
+        } catch (error) {
+            throw new Error(`Error downloading invoice: ${error.message}`);
+        }
+    }
+
+    // Helper method to get MIME type
+    getMimeType(filePath) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        };
+
+        return mimeTypes[ext] || 'application/octet-stream';
+    }
 
     //Sphelele
     async getAllUsers() {
@@ -53,28 +119,34 @@ class AdminService {
     async getAllClientUsers() {
         try {
             const result = await db.query(
-                `SELECT 
-                    client_user_id,
-                    title,
-                    first_name,
-                    last_name,
-                    email,
-                    phone_number,
-                    region,
-                    persal_id,
-                    department_id,
-                    user_type,
-                    network_provider,
-                    contract_duration_months,
-                    contract_end_date,
-                    registration_status,
-                    verification_notes
-                 FROM client_user 
+                `SELECT
+                     client_user_id,
+                     title,
+                     first_name,
+                     last_name,
+                     email,
+                     phone_number,
+                     region,
+                     persal_id,
+                     department_id,
+                     user_type,
+                     network_provider,
+                     contract_duration_months,
+                     contract_end_date,
+                     invoice_path,  
+                     registration_status,
+                     verification_notes,
+                     created_at
+                 FROM client_user
                  ORDER BY created_at DESC`,
                 []
             );
 
-            return result.rows;
+            return result.rows.map(user => ({
+                ...user,
+                has_invoice: !!user.invoice_path,
+                invoice_file_name: user.invoice_path ? path.basename(user.invoice_path) : null
+            }));
         } catch (error) {
             throw new Error(`Error fetching client users: ${error.message}`);
         }
@@ -84,23 +156,26 @@ class AdminService {
     async getClientUserById(userId) {
         try {
             const result = await db.query(
-                `SELECT 
-                    client_user_id,
-                    title,
-                    first_name,
-                    last_name,
-                    email,
-                    phone_number,
-                    region,
-                    persal_id,
-                    department_id,
-                    user_type,
-                    network_provider,
-                    contract_duration_months,
-                    contract_end_date,
-                    registration_status,
-                    verification_notes
-                 FROM client_user 
+                `SELECT
+                     client_user_id,
+                     title,
+                     first_name,
+                     last_name,
+                     email,
+                     phone_number,
+                     region,
+                     persal_id,
+                     department_id,
+                     user_type,
+                     network_provider,
+                     contract_duration_months,
+                     contract_end_date,
+                     invoice_path, 
+                     registration_status,
+                     verification_notes,
+                     created_at,
+                     updated_at
+                 FROM client_user
                  WHERE client_user_id = $1`,
                 [userId]
             );
@@ -109,7 +184,13 @@ class AdminService {
                 throw new Error('Client user not found');
             }
 
-            return result.rows[0];
+            const user = result.rows[0];
+            return {
+                ...user,
+                has_invoice: !!user.invoice_path,
+                invoice_file_name: user.invoice_path ? path.basename(user.invoice_path) : null,
+                profile_completed: user.registration_status === 'Profile_Completed' || user.registration_status === 'Verified'
+            };
         } catch (error) {
             throw new Error(`Error fetching client user: ${error.message}`);
         }

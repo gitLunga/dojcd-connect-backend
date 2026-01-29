@@ -24,6 +24,23 @@ class ClientUser {
         this.created_at = data.created_at || null;
         this.updated_at = data.updated_at || null;
     }
+
+    get invoiceInfo() {
+        if (!this.invoice_path) return null;
+
+        const path = require('path');
+        return {
+            has_invoice: true,
+            file_path: this.invoice_path,
+            file_name: path.basename(this.invoice_path)
+        };
+    }
+
+    // Add method to check if profile is complete
+    get isProfileComplete() {
+        return this.registration_status === 'Profile_Completed' ||
+            this.registration_status === 'Verified';
+    }
 }
 
 module.exports = ClientUser;

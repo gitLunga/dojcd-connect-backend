@@ -1,5 +1,6 @@
 const authService = require('../services/authService');
 const multer = require('multer');
+
 const path = require('path'); // Add this
 const fs = require('fs'); // Add this
 
@@ -91,6 +92,11 @@ class AuthController {
                         success: false,
                         message: 'Invoice file is required'
                     });
+                }
+
+                if (invoiceFile.originalname) {
+                    invoiceFile.originalname = decodeURIComponent(invoiceFile.originalname);
+                    console.log('🔧 Decoded filename:', invoiceFile.originalname);
                 }
 
                 const updatedUser = await authService.completeProfile(

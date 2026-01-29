@@ -21,4 +21,9 @@ router.get('/dashboard', (req, res) => adminController.getDashboardData(req, res
 // Search
 router.get('/search', (req, res) => adminController.searchUsers(req, res));
 
+//NEW: Invoice routes
+router.get('/client-users/:id/invoice', (req, res) => adminController.downloadInvoice(req, res));
+router.get('/client-users/:id/invoice/view', (req, res) => adminController.viewInvoice(req, res));
+router.get('/client-users/:id/invoice/info', (req, res) => adminController.getInvoiceInfo(req, res));
+
 module.exports = router;

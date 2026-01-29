@@ -1,4 +1,6 @@
 const adminService = require('../services/adminService');
+const path = require('path');
+const fs = require('fs');
 
 class AdminController {
 
@@ -65,6 +67,111 @@ class AdminController {
             });
         }
     }
+
+    // NEW METHOD: Download invoice
+    async downloadInvoice(req, res) {
+        try {
+            const { id } = req.params;
+            await adminService.downloadInvoice(id, res);
+            // Note: The response is handled by the downloadInvoice method
+            // No need to send JSON response here
+        } catch (error) {
+            console.error('Invoice download error:', error);
+
+            // If headers haven't been sent yet, send error JSON
+            if (!res.headersSent) {
+                res.status(404).json({
+                    success: false,
+                    message: error.message,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                // If headers were sent, end the response
+                res.end();
+            }
+        }
+    }
+
+    // NEW METHOD: View invoice (inline in browser)
+    async viewInvoice(req, res) {
+        try {
+            const { id } = req.params;
+            const invoiceInfo = await adminService.getClientInvoice(id);
+
+            // Set headers for inline viewing
+            res.setHeader('Content-Disposition', `inline; filename="${invoiceInfo.fileName}"`);
+            res.setHeader('Content-Type', invoiceInfo.mimeType);
+
+            // Stream the file
+            const fileStream = fs.createReadStream(invoiceInfo.filePath);
+            fileStream.pipe(res);
+
+            fileStream.on('error', (error) => {
+                console.error('File stream error:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Error streaming file',
+                        data: null
+                    });
+                }
+            });
+
+        } catch (error) {
+            console.error('Invoice view error:', error);
+            if (!res.headersSent) {
+                res.status(404).json({
+                    success: false,
+                    message: error.message,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+    }
+
+    // NEW METHOD: Get invoice info (metadata only)
+    async getInvoiceInfo(req, res) {
+        try {
+            const { id } = req.params;
+            const result = await adminService.getClientUserById(id);
+
+            if (!result.invoice_path) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'No invoice found for this user',
+                    data: null
+                });
+            }
+
+            const invoicePath = result.invoice_path;
+            const fullPath = path.join(__dirname, '..', invoicePath);
+
+            // Get file stats
+            const stats = fs.statSync(fullPath);
+
+            res.status(200).json({
+                success: true,
+                message: 'Invoice info retrieved successfully',
+                data: {
+                    file_name: path.basename(invoicePath),
+                    file_path: invoicePath,
+                    file_size: stats.size,
+                    uploaded_date: stats.mtime,
+                    mime_type: adminService.getMimeType(fullPath)
+                }
+            });
+
+        } catch (error) {
+            res.status(404).json({
+                success: false,
+                message: error.message,
+                data: null
+            });
+        }
+    }
+
 
     // Get all operational users
     async getAllOperationalUsers(req, res) {

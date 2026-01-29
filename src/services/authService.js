@@ -7,106 +7,7 @@ const fs = require('fs');
 const multer = require('multer'); // Added for file uploads
 
 class AuthService {
-    // Register new ClientUser
-    // async registerUser(userData,  invoiceFile = null) {
-    //     const { title, first_name, last_name, email, phone_number, region, persal_id,
-    //         department_id, user_type, password,  network_provider,         // Add this
-    //         contract_duration_months, // Add this
-    //         contract_end_date,        // Add this
-    //         invoice_data,             // Add this
-    //         invoice_filename     } = userData;
-    //
-    //     if (!title || !first_name || !last_name || !email || !password || !persal_id) {
-    //         throw new Error('All required fields must be filled');
-    //     }
-    //     // Check if email already exists
-    //     const emailCheck = await db.query(
-    //         `SELECT * FROM client_user WHERE email = $1`,
-    //         [email]
-    //     );
-    //     if (emailCheck.rows.length > 0) {
-    //         throw new Error('Email already registered');
-    //     }
-    //
-    //     // Check if Persal ID already exists
-    //     const persalCheck = await db.query(
-    //         `SELECT * FROM client_user WHERE persal_id = $1`,
-    //         [persal_id]
-    //     );
-    //     if (persalCheck.rows.length > 0) {
-    //         throw new Error('ID already registered');
-    //     }
-    //
-    //     // Hash password
-    //     const hashedPassword = await bcrypt.hash(password, 10);
-    //
-    //     // Handle invoice file if uploaded
-    //     let invoicePath = null;
-    //
-    //     // FIXED: Simplified file handling
-    //     if (invoiceFile) {
-    //         console.log('📁 File received:', invoiceFile);
-    //
-    //         // Multer already saved the file, just get the path
-    //         // invoiceFile.path contains the full path where multer saved it
-    //         // invoiceFile.filename contains just the filename
-    //
-    //         if (invoiceFile.filename) {
-    //             // Store relative path in database
-    //             invoicePath = `/uploads/invoices/${invoiceFile.filename}`;
-    //             console.log('✅ Invoice path stored:', invoicePath);
-    //         } else {
-    //             console.warn('⚠️ No filename in invoiceFile:', invoiceFile);
-    //         }
-    //     }
-    //
-    //     // Insert into database
-    //     const query = `
-    //         INSERT INTO client_user (
-    //             title, first_name, last_name, email, phone_number,
-    //             region, persal_id, department_id, user_type,
-    //             network_provider, contract_duration_months,
-    //             contract_end_date, invoice_path, password_hash,
-    //             registration_status
-    //         )
-    //         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'Pending')
-    //             RETURNING *;
-    //     `;
-    //
-    //     const values = [
-    //         title,
-    //         first_name,
-    //         last_name,
-    //         email,
-    //         phone_number,
-    //         region,
-    //         persal_id,
-    //         department_id,
-    //         user_type,
-    //         network_provider,
-    //         contract_duration_months,
-    //         contract_end_date,
-    //         invoicePath,
-    //         hashedPassword
-    //     ];
-    //
-    //
-    //     const result = await db.query(query, values);
-    //
-    //
-    //     if (result.rows.length === 0) {
-    //         throw new Error('Registration failed - no data returned');
-    //     }
-    //
-    //     // Create user instance with all returned data
-    //     const user = new ClientUser(result.rows[0]);
-    //
-    //     // Remove password hash from response for security
-    //     const userResponse = { ...user };
-    //     delete userResponse.password_hash;
-    //
-    //     return userResponse;
-    // }
+
 
     async registerUser(userData) {
         const { title, first_name, last_name, email, phone_number, region, persal_id,
@@ -149,24 +50,89 @@ class AuthService {
             throw new Error('All profile fields are required');
         }
 
-        // Handle invoice file if uploaded
         let invoicePath = null;
+
+        // Handle invoice file if uploaded
         if (invoiceFile?.filename) {
             invoicePath = `/uploads/invoices/${invoiceFile.filename}`;
+
+
+            console.log('📁 Invoice file received:', invoiceFile);
+            console.log('📁 Original name:', invoiceFile.originalname);
+            console.log('📁 File details:', {
+                fieldname: invoiceFile.fieldname,
+                filename: invoiceFile.filename,
+                path: invoiceFile.path,
+                size: invoiceFile.size,
+                mimetype: invoiceFile.mimetype
+            });
+
+            try {
+                // Create uploads/invoices directory if it doesn't exist
+                const uploadDir = path.join(__dirname, '../uploads/invoices');
+                if (!fs.existsSync(uploadDir)) {
+                    fs.mkdirSync(uploadDir, { recursive: true });
+                    console.log('✅ Created directory:', uploadDir);
+                }
+
+                // Get file extension
+                const ext = path.extname(invoiceFile.originalname) ||
+                    (invoiceFile.mimetype === 'application/pdf' ? '.pdf' :
+                        invoiceFile.mimetype === 'image/jpeg' ? '.jpg' :
+                            invoiceFile.mimetype === 'image/png' ? '.png' : '.bin');
+
+                // Generate unique filename
+                const uniqueFilename = `invoice_${clientUserId}_${Date.now()}${ext}`;
+                const finalPath = path.join(uploadDir, uniqueFilename);
+
+                console.log('📁 Final path to save:', finalPath);
+
+                // Check if file exists in temp location
+                if (invoiceFile.path && fs.existsSync(invoiceFile.path)) {
+                    // Move file from temp to permanent location
+                    fs.renameSync(invoiceFile.path, finalPath);
+                    console.log('✅ File moved from temp to:', finalPath);
+                } else if (invoiceFile.buffer) {
+                    // File is in memory buffer
+                    fs.writeFileSync(finalPath, invoiceFile.buffer);
+                    console.log('✅ File saved from buffer to:', finalPath);
+                } else {
+                    throw new Error('No file data found');
+                }
+
+                // Verify file was saved
+                if (fs.existsSync(finalPath)) {
+                    const stats = fs.statSync(finalPath);
+                    console.log('✅ File saved successfully. Size:', stats.size, 'bytes');
+                } else {
+                    throw new Error('File was not saved');
+                }
+
+                // Store relative path for web access
+                // IMPORTANT: This path should match what getClientInvoice expects
+                invoicePath = `/uploads/invoices/${uniqueFilename}`;
+                console.log('📝 Path to store in DB:', invoicePath);
+
+            } catch (error) {
+                console.error('❌ Error saving invoice file:', error);
+                throw new Error(`Failed to save invoice file: ${error.message}`);
+            }
         }
 
+        // Update the database
         const query = `
-        UPDATE client_user
-        SET
-            network_provider = $1,
-            contract_duration_months = $2,
-            contract_end_date = $3,
-            invoice_path = $4,
-            registration_status = 'Profile_Completed',
-            updated_at = CURRENT_TIMESTAMP
-        WHERE client_user_id = $5
-        RETURNING *;
-    `;
+            UPDATE client_user
+            SET
+                network_provider = $1,
+                contract_duration_months = $2,
+                contract_end_date = $3,
+                invoice_path = $4,
+                registration_status = 'Profile_Completed',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE client_user_id = $5
+                RETURNING *;
+        `;
+
         const values = [
             network_provider,
             contract_duration_months,
@@ -175,32 +141,43 @@ class AuthService {
             clientUserId
         ];
 
+        console.log('📝 Saving to database with values:', values);
+
         const result = await db.query(query, values);
+
+        console.log('✅ Profile completed successfully for user:', clientUserId);
+        console.log('📁 Invoice path in database:', result.rows[0].invoice_path);
+
         return result.rows[0];
     }
 
-
+    // Optional: Keep handleInvoiceUpload if you need it for separate uploads
     async handleInvoiceUpload(file) {
         try {
             // Create uploads directory if it doesn't exist
-            const uploadDir = path.join(__dirname, '../uploads/temp');
+            const uploadDir = path.join(__dirname, '../uploads/invoices');
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir, { recursive: true });
             }
 
             // Generate unique filename
             const timestamp = Date.now();
-            const uniqueFilename = `temp_invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
-            const tempPath = path.join(uploadDir, uniqueFilename);
+            const uniqueFilename = `temp_invoice_${timestamp}_${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+            const filePath = path.join(uploadDir, uniqueFilename);
 
-            // Move uploaded file (FormData file is already on disk)
-            fs.renameSync(file.path, tempPath);
+            // Save the file
+            if (file.buffer) {
+                fs.writeFileSync(filePath, file.buffer);
+            } else if (file.path) {
+                fs.renameSync(file.path, filePath);
+            }
 
             return {
                 success: true,
-                tempPath: tempPath,
-                filename: file.originalname,
-                mimeType: file.mimetype
+                tempPath: filePath,
+                filename: uniqueFilename,
+                mimeType: file.mimetype,
+                relativePath: `/uploads/invoices/${uniqueFilename}`
             };
 
         } catch (error) {
@@ -235,7 +212,7 @@ class AuthService {
         const query = `
             INSERT INTO operational_user 
             (title, first_name, last_name, email, user_role, password_hash)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *;
         `;
         const values = [
