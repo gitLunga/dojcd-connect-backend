@@ -26,7 +26,7 @@ CREATE TABLE client_user (
     invoice_path VARCHAR(255),
     registration_status VARCHAR(50) 
         DEFAULT 'Pending'
-        CHECK (registration_status IN ('Pending', 'Verified', 'Rejected')),
+        CHECK (registration_status IN ('Pending','Profile_Completed', 'Verified', 'Rejected')),
     verification_notes TEXT
 	
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -51,12 +51,13 @@ CREATE TABLE device_catalog (
 -- 3. Table: OPERATIONAL_USER
 CREATE TABLE operational_user (
     op_user_id SERIAL PRIMARY KEY,
+    title VARCHAR(20), -- 
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Warehouse', 'Approver')),
     password_hash VARCHAR(255) NOT NULL,
-    cognito_id VARCHAR(255) UNIQUE
+    cognito_id VARCHAR(255) UNIQUE,
 	
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
