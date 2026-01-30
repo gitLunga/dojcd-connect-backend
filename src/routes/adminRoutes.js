@@ -14,6 +14,9 @@ router.get('/operational-users/:id', (req, res) => adminController.getOperationa
 
 // Statistics & Analytics
 router.get('/statistics', (req, res) => adminController.getStatistics(req, res));
+router.get('/statistics/enhanced', (req, res) => adminController.getEnhancedStatistics(req, res));
+router.get('/statistics/dashboard', (req, res) => adminController.getDashboardMetrics(req, res));
+router.get('/statistics/performance', (req, res) => adminController.getPerformanceStats(req, res));
 router.get('/recent-registrations', (req, res) => adminController.getRecentRegistrations(req, res));
 router.get('/activity-summary', (req, res) => adminController.getActivitySummary(req, res));
 router.get('/dashboard', (req, res) => adminController.getDashboardData(req, res));

@@ -192,7 +192,164 @@ const applicationController = {
                 message: 'Failed to check eligibility'
             });
         }
+    },
+
+    //// controllers/applicationController.js - Add these updated methods
+
+    // Get all applications (Admin)
+    getAllApplications: async (req, res) => {
+        try {
+            // Extract filters from query parameters
+            const filters = {
+                status: req.query.status,
+                device_id: req.query.device_id,
+                user_id: req.query.user_id,
+                user_type: req.query.user_type,
+                region: req.query.region,
+                start_date: req.query.start_date,
+                end_date: req.query.end_date,
+                limit: req.query.limit || 50,
+                offset: req.query.offset || 0
+            };
+
+            const result = await applicationService.getAllApplications(filters);
+
+            res.json({
+                success: true,
+                ...result
+            });
+
+        } catch (error) {
+            console.error('Get all applications error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch applications'
+            });
+        }
+    },
+
+    // Update application status (Admin)
+    updateApplicationStatus: async (req, res) => {
+        try {
+            const { applicationId } = req.params;
+            const {
+                status,
+                rejection_reason,
+                notes,
+                approver_id,
+                is_admin = false
+            } = req.body;
+
+            // Validate required fields
+            if (!status) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'status is required'
+                });
+            }
+
+            // Validate status matches database enum
+            const validStatuses = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+                });
+            }
+
+            // Check if approver ID is required for approval
+            if (status === 'Approved' && !approver_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'approver_id is required for approval'
+                });
+            }
+
+            // Check if rejection reason is required
+            if (status === 'Rejected' && !rejection_reason) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'rejection_reason is required for rejected applications'
+                });
+            }
+
+            const result = await applicationService.updateApplicationStatus(
+                parseInt(applicationId),
+                {
+                    status,
+                    rejection_reason,
+                    notes,
+                    is_admin
+                },
+                approver_id ? parseInt(approver_id) : null
+            );
+
+            if (result.success) {
+                res.json(result);
+            } else {
+                res.status(400).json(result);
+            }
+
+        } catch (error) {
+            console.error('Update application status error:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to update application status'
+            });
+        }
+    },
+
+    // Get application statistics (Admin)
+    getApplicationStatistics: async (req, res) => {
+        try {
+            const filters = {
+                start_date: req.query.start_date,
+                end_date: req.query.end_date,
+                region: req.query.region
+            };
+
+            const result = await applicationService.getApplicationStatistics(filters);
+
+            res.json({
+                success: true,
+                ...result
+            });
+
+        } catch (error) {
+            console.error('Get application statistics error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch application statistics'
+            });
+        }
+    },
+
+    // Get application details (Admin version - more details)
+    getAdminApplicationDetails: async (req, res) => {
+        try {
+            const { applicationId } = req.params;
+
+            const application = await applicationService.getAdminApplicationDetails(
+                parseInt(applicationId)
+            );
+
+            res.json({
+                success: true,
+                data: application
+            });
+
+        } catch (error) {
+            console.error('Get admin application details error:', error);
+            res.status(404).json({
+                success: false,
+                message: error.message
+            });
+        }
     }
+
+
+
+
 };
 
 module.exports = applicationController;

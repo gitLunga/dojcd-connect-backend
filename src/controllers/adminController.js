@@ -387,6 +387,74 @@ class AdminController {
             });
         }
     }
+    // Add these methods to your existing AdminController class
+
+// Get enhanced statistics
+    async getEnhancedStatistics(req, res) {
+        try {
+            const statistics = await adminService.getEnhancedStatistics();
+            res.status(200).json({
+                success: true,
+                message: 'Enhanced statistics retrieved successfully',
+                data: {
+                    statistics: statistics
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// Get dashboard metrics
+    async getDashboardMetrics(req, res) {
+        try {
+            const metrics = await adminService.getDashboardMetrics();
+            res.status(200).json({
+                success: true,
+                message: 'Dashboard metrics retrieved successfully',
+                data: {
+                    metrics: metrics
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// Get performance statistics
+    async getPerformanceStats(req, res) {
+        try {
+            const stats = await adminService.getPerformanceStats();
+            res.status(200).json({
+                success: true,
+                message: 'Performance statistics retrieved successfully',
+                data: {
+                    stats: stats
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
 }
 
 module.exports = new AdminController();
