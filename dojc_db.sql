@@ -27,7 +27,7 @@ CREATE TABLE client_user (
     registration_status VARCHAR(50) 
         DEFAULT 'Pending'
         CHECK (registration_status IN ('Pending','Profile_Completed', 'Verified', 'Rejected')),
-    verification_notes TEXT
+    verification_notes TEXT,
 	
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
