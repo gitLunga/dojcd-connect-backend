@@ -1,9 +1,10 @@
 // services/applicationService.js
 const db = require('../../config/db');
+const NotificationService = require('../notificationService');
 
 class ApplicationService {
     /**
-     * Check if user can apply
+     * Check if user can applycon
      * Why: Users must be verified before applying
      */
     async checkUserEligibility(clientUserId) {
@@ -131,6 +132,32 @@ class ApplicationService {
 
             const application = result.rows[0];
 
+            await NotificationService.createNotification(
+                clientUserId,          // user_id
+                'Client',              // user_type
+                'Application Submitted', // title
+                'Your device application has been submitted successfully. We will review it soon.' // message
+            );
+
+            // ===== ADD NOTIFICATION FOR APPROVERS =====
+            // Find all approvers (operational users with 'Approver' role)
+            const approversResult = await client.query(`
+                SELECT op_user_id FROM operational_user
+                WHERE user_role IN ('Approver', 'Admin')
+        `);
+
+            for (const approver of approversResult.rows) {
+                await NotificationService.createNotification(
+                    approver.op_user_id,           // user_id
+                    'Operational',                 // user_type
+                    'New Application to Review',   // title
+                    `A new application #${application.application_id} has been submitted and needs your review.` // message
+                );
+            }
+
+
+
+
             await client.query('COMMIT');
 
             return {
@@ -220,6 +247,30 @@ class ApplicationService {
                 WHERE application_id = $1
                 RETURNING *
             `, [applicationId]);
+
+            // ===== ADD NOTIFICATION FOR CLIENT =====
+            await NotificationService.createNotification(
+                clientUserId,               // user_id
+                'Client',                   // user_type
+                'Application Cancelled',    // title
+                'You have successfully cancelled your application.' // message
+            );
+
+            // ===== ADD NOTIFICATION FOR APPROVERS =====
+            // Let approvers know this application was cancelled
+            const approversResult = await client.query(`
+            SELECT op_user_id FROM operational_user
+            WHERE user_role IN ('Approver', 'Admin')
+            `);
+
+            for (const approver of approversResult.rows) {
+                await NotificationService.createNotification(
+                    approver.op_user_id,            // user_id
+                    'Operational',                  // user_type
+                    'Application Cancelled by User', // title
+                    `Application #${applicationId} has been cancelled by the user.` // message
+                );
+            }
 
             await client.query('COMMIT');
 
@@ -460,6 +511,7 @@ class ApplicationService {
             const application = checkResult.rows[0];
             const currentStatus = application.application_status;
 
+            const clientUserId = application.client_user_id;
             // 2. Validate status transition based on your schema
             // Only 'Pending' applications can be moved to 'Approved' or 'Rejected'
             if (currentStatus !== 'Pending' &&
@@ -510,6 +562,14 @@ class ApplicationService {
                     ) VALUES ($1, $2, 'Processing', NOW())
                 `, [applicationId, approverId]);
 
+                await NotificationService.createNotification(
+                    clientUserId,           // user_id
+                    'Client',               // user_type
+                    'Application Approved', // title
+                    'Great news! Your device application has been approved. Your order is now being processed.' // message
+                );
+
+
             } else if (statusData.status === 'Rejected') {
                 // When rejecting, require a reason
                 if (!statusData.rejection_reason) {
@@ -539,6 +599,15 @@ class ApplicationService {
                     `, [applicationId, approverId, 'Rejected', statusData.rejection_reason]);
                 }
 
+                // ===== ADD NOTIFICATION FOR CLIENT =====
+                await NotificationService.createNotification(
+                    clientUserId,           // user_id
+                    'Client',               // user_type
+                    'Application Rejected', // title
+                    `Your application has been rejected. Reason: ${statusData.rejection_reason}` // message
+                );
+
+
             } else if (statusData.status === 'Cancelled') {
                 // Only allow admin to cancel non-pending applications
                 if (currentStatus !== 'Pending') {
@@ -556,6 +625,8 @@ class ApplicationService {
                     WHERE application_id = $1
                     RETURNING *
                 `, [applicationId, 'Cancelled']);
+
+
 
             } else {
                 // For other status updates (though your schema only has the 4 statuses)

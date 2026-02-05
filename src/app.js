@@ -3,6 +3,7 @@ const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const applicationRoutes = require('./routes/Application/applicationRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -39,5 +40,7 @@ app.use('/api/admin', adminRoutes);
 
 //application routes
 app.use('/api/applications', applicationRoutes);
+
+app.use('/api/notifications', notificationRoutes);
 
 module.exports = app;
