@@ -55,7 +55,7 @@ CREATE TABLE operational_user (
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Warehouse', 'Approver')),
+    user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Approver')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE,
 	
@@ -84,6 +84,17 @@ CREATE TABLE application (
         REFERENCES device_catalog (device_id)
         ON DELETE RESTRICT
 );
+
+CREATE TABLE notification (
+    notification_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('Client', 'Operational')),
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- 5. Table: DOCUMENT
 CREATE TABLE document (
