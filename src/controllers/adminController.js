@@ -455,6 +455,126 @@ class AdminController {
         }
     }
 
+    //DOCUMENTS
+    async getAllUserDocuments(req, res) {
+        try {
+            const { id } = req.params;
+            const documents = await adminService.getAllUserDocuments(id);
+
+            res.status(200).json({
+                success: true,
+                message: 'User documents retrieved successfully',
+                data: {
+                    user_id: id,
+                    documents: documents
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(404).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// Download ANY document
+    async downloadDocument(req, res) {
+        try {
+            const { id } = req.params; // document ID
+            const docInfo = await adminService.downloadUserDocument(id);
+
+            res.setHeader('Content-Disposition', `attachment; filename="${docInfo.fileName}"`);
+            res.setHeader('Content-Type', docInfo.mimeType);
+
+            const fileStream = fs.createReadStream(docInfo.filePath);
+            fileStream.pipe(res);
+
+            fileStream.on('error', (error) => {
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Error streaming file',
+                        data: null
+                    });
+                }
+            });
+
+        } catch (error) {
+            if (!res.headersSent) {
+                res.status(404).json({
+                    success: false,
+                    message: error.message,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+    }
+
+// View ANY document inline
+    async viewDocument(req, res) {
+        try {
+            const { id } = req.params;
+            const docInfo = await adminService.viewUserDocument(id);
+
+            res.setHeader('Content-Disposition', `inline; filename="${docInfo.fileName}"`);
+            res.setHeader('Content-Type', docInfo.mimeType);
+
+            const fileStream = fs.createReadStream(docInfo.filePath);
+            fileStream.pipe(res);
+
+            fileStream.on('error', (error) => {
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Error streaming file',
+                        data: null
+                    });
+                }
+            });
+
+        } catch (error) {
+            if (!res.headersSent) {
+                res.status(404).json({
+                    success: false,
+                    message: error.message,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+    }
+
+// Update document status
+    async updateDocumentStatus(req, res) {
+        try {
+            const { id } = req.params;
+            const { status, notes } = req.body;
+
+            const updatedDoc = await adminService.updateDocumentStatus(id, status, notes);
+
+            res.status(200).json({
+                success: true,
+                message: 'Document status updated successfully',
+                data: {
+                    document: updatedDoc
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(404).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+
 }
 
 module.exports = new AdminController();

@@ -4,6 +4,8 @@ const authController = require('../controllers/authController');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+
+
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         const uploadDir = path.join(__dirname, '../uploads/temp');
@@ -45,9 +47,18 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
+        fileSize: 10 * 1024 * 1024, // 10MB per file
+        files: 4 // Maximum 4 files (invoice + 3 docs)
     }
 });
+
+// Define upload fields for complete profile
+const completeProfileUpload = upload.fields([
+    { name: 'invoice_file', maxCount: 1 },
+    { name: 'id_document', maxCount: 1 },
+    { name: 'payslip_document', maxCount: 1 },
+    { name: 'residence_document', maxCount: 1 }
+]);
 
 router.get('/test', (req, res) => {
     res.status(200).json({
@@ -59,10 +70,27 @@ router.get('/test', (req, res) => {
 
 //registration routes
 router.post('/register', (req, res) => authController.register(req, res));
+// router.post(
+//     '/complete-profile/:clientUserId',
+//     (req, res) => authController.completeProfile(req, res)
+// );
+
 router.post(
     '/complete-profile/:clientUserId',
+    (req, res, next) => {
+        completeProfileUpload(req, res, (err) => {
+            if (err) {
+                return res.status(400).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+            next();
+        });
+    },
     (req, res) => authController.completeProfile(req, res)
 );
+
 router.post('/register-operational', (req, res) => authController.registerOperational(req, res));
 
 // Login routes

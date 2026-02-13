@@ -16,9 +16,9 @@ router.put('/users/:clientUserId/applications/:applicationId/cancel', applicatio
 router.get('/users/:clientUserId/eligibility', applicationController.checkEligibility);
 
 // ADMIN ROUTES - Add these new routes
+router.get('/admin/applications/stats', applicationController.getApplicationStatistics);
 router.get('/admin/applications', applicationController.getAllApplications);
 router.get('/admin/applications/:applicationId', applicationController.getAdminApplicationDetails); // NEW
 router.put('/admin/applications/:applicationId/status', applicationController.updateApplicationStatus);
-router.get('/admin/applications/stats', applicationController.getApplicationStatistics);
 
 module.exports = router;

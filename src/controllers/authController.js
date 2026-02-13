@@ -73,49 +73,53 @@ class AuthController {
         }
     }
 
+
+
+
     async completeProfile(req, res) {
         try {
-            upload.single('invoice_file')(req, res, async (err) => {
-                if (err) {
-                    return res.status(400).json({
-                        success: false,
-                        message: err.message
-                    });
-                }
+            const { clientUserId } = req.params;
+            const profileData = req.body;
+            const files = req.files; // Files are already processed by route middleware
 
-                const { clientUserId } = req.params;
-                const profileData = req.body;
-                const invoiceFile = req.file;
+            console.log('📁 Files received from middleware:', Object.keys(files || {}));
+            console.log('📝 Profile data:', profileData);
 
-                if (!invoiceFile) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Invoice file is required'
-                    });
-                }
-
-                if (invoiceFile.originalname) {
-                    invoiceFile.originalname = decodeURIComponent(invoiceFile.originalname);
-                    console.log('🔧 Decoded filename:', invoiceFile.originalname);
-                }
-
-                const updatedUser = await authService.completeProfile(
-                    clientUserId,
-                    profileData,
-                    invoiceFile
-                );
-
-                res.status(200).json({
-                    success: true,
-                    message: 'Profile completed successfully',
-                    user: updatedUser
+            // Check required files
+            if (!files || !files.invoice_file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invoice file is required'
                 });
+            }
+
+            if (!files.id_document || !files.payslip_document) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID document and Payslip are required'
+                });
+            }
+
+            const result = await authService.completeProfile(
+                parseInt(clientUserId),
+                profileData,
+                files
+            );
+
+            res.status(200).json({
+                success: true,
+                message: result.message,
+                data: {
+                    user: result.user,
+                    documents: result.documents
+                }
             });
+
         } catch (error) {
             console.error('Complete profile error:', error);
             res.status(500).json({
                 success: false,
-                message: 'Internal server error'
+                message: error.message || 'Internal server error'
             });
         }
     }

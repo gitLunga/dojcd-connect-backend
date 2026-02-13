@@ -328,10 +328,12 @@ const applicationController = {
     getAdminApplicationDetails: async (req, res) => {
         try {
             const { applicationId } = req.params;
+            console.log('First ID: ',applicationId)
+            const id = parseInt(applicationId);
+            console.log('Parsed applicationId:', id);
 
-            const application = await applicationService.getAdminApplicationDetails(
-                parseInt(applicationId)
-            );
+            const application = await applicationService.getAdminApplicationDetails(id);
+
 
             res.json({
                 success: true,

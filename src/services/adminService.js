@@ -748,6 +748,187 @@ class AdminService {
         }
     }
 
+    //DOCUMENTS
+    // In AdminService.js - fix the UNION ALL ORDER BY issue
+    async getAllUserDocuments(userId) {
+        try {
+            // Get regular documents from document table
+            const documentsResult = await db.query(
+                `SELECT
+                     document_id,
+                     document_type,
+                     s3_path,
+                     upload_date,
+                     document_status,
+                     application_id,
+                     false as is_invoice,
+                     -- Add sort_order for consistent ordering
+                     CASE document_type
+                         WHEN 'ID' THEN 1
+                         WHEN 'Payslip' THEN 2
+                         WHEN 'Proof_of_Residence' THEN 3
+                         ELSE 4
+                         END as sort_order
+                 FROM document
+                 WHERE client_user_id = $1
+
+                 UNION ALL
+
+                 -- Get invoice as a document
+                 SELECT
+                     -1 as document_id,
+                     'Invoice' as document_type,
+                     invoice_path as s3_path,
+                     created_at as upload_date,
+                     'Verified' as document_status,
+                     NULL as application_id,
+                     true as is_invoice,
+                     0 as sort_order  -- Invoices come first
+                 FROM client_user
+                 WHERE client_user_id = $2 AND invoice_path IS NOT NULL
+
+                 ORDER BY sort_order, upload_date DESC`,
+                [userId, userId]
+            );
+
+            if (documentsResult.rows.length === 0) {
+                return [];
+            }
+
+            // Get file info for each document
+            const documents = [];
+            for (const doc of documentsResult.rows) {
+                const fullPath = path.join(__dirname, '..', doc.s3_path);
+                const fileExists = fs.existsSync(fullPath);
+
+                // Get file stats for size if file exists
+                let fileSize = null;
+                if (fileExists) {
+                    try {
+                        const stats = fs.statSync(fullPath);
+                        fileSize = stats.size;
+                    } catch (err) {
+                        console.error(`Error getting file stats for ${doc.s3_path}:`, err);
+                    }
+                }
+
+                documents.push({
+                    document_id: doc.document_id,
+                    document_type: doc.document_type,
+                    is_invoice: doc.is_invoice,
+                    file_path: doc.s3_path,
+                    file_name: path.basename(doc.s3_path),
+                    file_exists: fileExists,
+                    file_size: fileSize,
+                    upload_date: doc.upload_date,
+                    document_status: doc.document_status,
+                    application_id: doc.application_id,
+                    mime_type: fileExists ? this.getMimeType(fullPath) : null
+                });
+            }
+
+            return documents;
+        } catch (error) {
+            console.error('Error in getAllUserDocuments:', error);
+            throw new Error(`Error fetching user documents: ${error.message}`);
+        }
+    }
+
+// Download ANY document (works for invoice, ID, payslip, etc.)
+    // Fix the downloadUserDocument method - the parameter order was wrong
+    async downloadUserDocument(documentId) {
+        try {
+            let query;
+            let params;
+
+            // Check if this is an invoice (negative ID)
+            if (documentId < 0) {
+                // This is an invoice - get from client_user table
+                query = `
+                SELECT 
+                    invoice_path as s3_path,
+                    'Invoice' as document_type,
+                    'Verified' as document_status,
+                    first_name,
+                    last_name
+                FROM client_user 
+                WHERE client_user_id = $1 AND invoice_path IS NOT NULL
+            `;
+                params = [Math.abs(documentId)]; // Convert back to positive user ID
+            } else {
+                // Regular document
+                query = `
+                SELECT 
+                    d.s3_path,
+                    d.document_type,
+                    d.document_status,
+                    cu.first_name,
+                    cu.last_name
+                FROM document d
+                LEFT JOIN client_user cu ON d.client_user_id = cu.client_user_id
+                WHERE d.document_id = $1
+            `;
+                params = [documentId];
+            }
+
+            const result = await db.query(query, params);
+
+            if (result.rows.length === 0) {
+                throw new Error('Document not found');
+            }
+
+            const doc = result.rows[0];
+            const fullPath = path.join(__dirname, '..', doc.s3_path);
+
+            if (!fs.existsSync(fullPath)) {
+                throw new Error('Document file not found on server');
+            }
+
+            // Sanitize filename - remove any invalid characters
+            const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}_${path.basename(doc.s3_path)}`
+                .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+            return {
+                filePath: fullPath,
+                fileName: safeFileName,
+                mimeType: this.getMimeType(fullPath),
+                documentType: doc.document_type,
+                documentStatus: doc.document_status
+            };
+        } catch (error) {
+            throw new Error(`Error downloading document: ${error.message}`);
+        }
+    }
+
+// Update document status (verify/reject)
+    async updateDocumentStatus(documentId, status, notes) {
+        try {
+            const result = await db.query(
+                `UPDATE document 
+             SET document_status = $1,
+                 verification_notes = $2,
+                 verification_date = CURRENT_TIMESTAMP
+             WHERE document_id = $3
+             RETURNING *`,
+                [status, notes, documentId]
+            );
+
+            if (result.rows.length === 0) {
+                throw new Error('Document not found');
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            throw new Error(`Error updating document status: ${error.message}`);
+        }
+    }
+
+// View ANY document
+    async viewUserDocument(documentId) {
+        return await this.downloadUserDocument(documentId); // Same logic as download
+    }
+
+
 }
 
 module.exports = new AdminService();

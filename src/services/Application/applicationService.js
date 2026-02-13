@@ -91,6 +91,93 @@ class ApplicationService {
      * Why: This is the core function - creates application record
      * Note: Follows your exact database schema
      */
+    // async submitApplication(clientUserId, deviceId) {
+    //     const client = await db.connect();
+    //
+    //     try {
+    //         await client.query('BEGIN');
+    //
+    //         // 1. Check user eligibility
+    //         const eligibility = await this.checkUserEligibility(clientUserId);
+    //         if (!eligibility.eligible) {
+    //             throw new Error(eligibility.reason);
+    //         }
+    //
+    //         // 2. Check device availability
+    //         const device = await this.getDeviceById(deviceId);
+    //
+    //         // 3. Check for existing pending application for same device
+    //         const existingApp = await client.query(`
+    //             SELECT application_id FROM application
+    //             WHERE client_user_id = $1
+    //             AND device_id = $2
+    //             AND application_status = 'Pending'
+    //         `, [clientUserId, deviceId]);
+    //
+    //         if (existingApp.rows.length > 0) {
+    //             throw new Error('You already have a pending application for this device');
+    //         }
+    //
+    //         // 4. Insert into application table (following your schema exactly)
+    //         const result = await client.query(`
+    //             INSERT INTO application (
+    //                 client_user_id,
+    //                 device_id,
+    //                 application_status,
+    //                 submission_date,
+    //                 last_updated
+    //             ) VALUES ($1, $2, 'Pending', NOW(), NOW())
+    //             RETURNING *
+    //         `, [clientUserId, deviceId]);
+    //
+    //         const application = result.rows[0];
+    //
+    //         await NotificationService.createNotification(
+    //             clientUserId,          // user_id
+    //             'Client',              // user_type
+    //             'Application Submitted', // title
+    //             'Your device application has been submitted successfully. We will review it soon.' // message
+    //         );
+    //
+    //         // ===== ADD NOTIFICATION FOR APPROVERS =====
+    //         // Find all approvers (operational users with 'Approver' role)
+    //         const approversResult = await client.query(`
+    //             SELECT op_user_id FROM operational_user
+    //             WHERE user_role IN ('Approver', 'Admin')
+    //     `);
+    //
+    //         for (const approver of approversResult.rows) {
+    //             await NotificationService.createNotification(
+    //                 approver.op_user_id,           // user_id
+    //                 'Operational',                 // user_type
+    //                 'New Application to Review',   // title
+    //                 `A new application #${application.application_id} has been submitted and needs your review.` // message
+    //             );
+    //         }
+    //
+    //
+    //
+    //
+    //         await client.query('COMMIT');
+    //
+    //         return {
+    //             success: true,
+    //             application: application,
+    //             message: 'Application submitted successfully. Status: Pending'
+    //         };
+    //
+    //     } catch (error) {
+    //         await client.query('ROLLBACK');
+    //         console.error('Error submitting application:', error);
+    //         return {
+    //             success: false,
+    //             message: error.message
+    //         };
+    //     } finally {
+    //         client.release();
+    //     }
+    // }
+
     async submitApplication(clientUserId, deviceId) {
         const client = await db.connect();
 
@@ -108,62 +195,90 @@ class ApplicationService {
 
             // 3. Check for existing pending application for same device
             const existingApp = await client.query(`
-                SELECT application_id FROM application 
-                WHERE client_user_id = $1 
-                AND device_id = $2 
-                AND application_status = 'Pending'
-            `, [clientUserId, deviceId]);
+            SELECT application_id FROM application 
+            WHERE client_user_id = $1 
+            AND device_id = $2 
+            AND application_status = 'Pending'
+        `, [clientUserId, deviceId]);
 
             if (existingApp.rows.length > 0) {
                 throw new Error('You already have a pending application for this device');
             }
 
-            // 4. Insert into application table (following your schema exactly)
+            // 4. Insert into application table
             const result = await client.query(`
-                INSERT INTO application (
-                    client_user_id,
-                    device_id,
-                    application_status,
-                    submission_date,
-                    last_updated
-                ) VALUES ($1, $2, 'Pending', NOW(), NOW())
-                RETURNING *
-            `, [clientUserId, deviceId]);
+            INSERT INTO application (
+                client_user_id,
+                device_id,
+                application_status,
+                submission_date,
+                last_updated
+            ) VALUES ($1, $2, 'Pending', NOW(), NOW())
+            RETURNING *
+        `, [clientUserId, deviceId]);
 
             const application = result.rows[0];
+            const applicationId = application.application_id;
 
+        //     // ===== NEW: LINK EXISTING DOCUMENTS TO THIS APPLICATION =====
+        //     const linkResult = await client.query(`
+        //     UPDATE document
+        //     SET application_id = $1
+        //     WHERE client_user_id = $2
+        //     AND application_id IS NULL
+        //     AND document_status = 'Pending'
+        //     RETURNING document_id, document_type
+        // `, [applicationId, clientUserId]);
+        //
+        //     const linkedDocuments = linkResult.rows;
+        //     console.log(`✅ Linked ${linkedDocuments.length} documents to application ${applicationId}`);
+        //
+        //     // ===== CHECK IF ALL REQUIRED DOCUMENTS ARE PRESENT =====
+        //     const requiredDocs = ['ID', 'Payslip']; // Required document types
+        //     const presentDocs = linkedDocuments.map(doc => doc.document_type);
+        //     const missingDocs = requiredDocs.filter(doc => !presentDocs.includes(doc));
+        //
+        //     if (missingDocs.length > 0) {
+        //         // Update application status if documents are missing
+        //         await client.query(`
+        //         UPDATE application
+        //         SET application_status = 'Documents_Incomplete',
+        //             last_updated = NOW()
+        //         WHERE application_id = $1
+        //     `, [applicationId]);
+        //
+        //         console.log(`⚠️ Missing documents: ${missingDocs.join(', ')}`);
+        //     }
+
+            // ===== CREATE NOTIFICATIONS =====
             await NotificationService.createNotification(
-                clientUserId,          // user_id
-                'Client',              // user_type
-                'Application Submitted', // title
-                'Your device application has been submitted successfully. We will review it soon.' // message
+                clientUserId,
+                'Client',
+                'Application Submitted',
+                'Your device application has been submitted successfully. We will review it soon.'
             );
 
-            // ===== ADD NOTIFICATION FOR APPROVERS =====
-            // Find all approvers (operational users with 'Approver' role)
+            // Notify approvers
             const approversResult = await client.query(`
-                SELECT op_user_id FROM operational_user
-                WHERE user_role IN ('Approver', 'Admin')
+            SELECT op_user_id FROM operational_user
+            WHERE user_role IN ('Approver', 'Admin')
         `);
 
             for (const approver of approversResult.rows) {
                 await NotificationService.createNotification(
-                    approver.op_user_id,           // user_id
-                    'Operational',                 // user_type
-                    'New Application to Review',   // title
-                    `A new application #${application.application_id} has been submitted and needs your review.` // message
+                    approver.op_user_id,
+                    'Operational',
+                    'New Application to Review',
+                    `A new application #${applicationId} has been submitted and needs your review.`
                 );
             }
-
-
-
 
             await client.query('COMMIT');
 
             return {
                 success: true,
                 application: application,
-                message: 'Application submitted successfully. Status: Pending'
+                message: 'Application submitted successfully.'
             };
 
         } catch (error) {
@@ -177,6 +292,7 @@ class ApplicationService {
             client.release();
         }
     }
+
 
     /**
      * Get user's applications

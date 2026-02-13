@@ -29,4 +29,11 @@ router.get('/client-users/:id/invoice', (req, res) => adminController.downloadIn
 router.get('/client-users/:id/invoice/view', (req, res) => adminController.viewInvoice(req, res));
 router.get('/client-users/:id/invoice/info', (req, res) => adminController.getInvoiceInfo(req, res));
 
+//Documents
+// Document routes
+router.get('/client-users/:id/documents', (req, res) => adminController.getAllUserDocuments(req, res));
+router.get('/documents/:id/download', (req, res) => adminController.downloadDocument(req, res));
+router.get('/documents/:id/view', (req, res) => adminController.viewDocument(req, res));
+router.patch('/documents/:id/status', (req, res) => adminController.updateDocumentStatus(req, res));
+
 module.exports = router;
