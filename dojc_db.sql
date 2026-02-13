@@ -99,11 +99,14 @@ CREATE TABLE notification (
 -- 5. Table: DOCUMENT
 CREATE TABLE document (
     document_id SERIAL PRIMARY KEY,
-    application_id INTEGER NOT NULL,
+    application_id INTEGER, -- Changed to NULLABLE since documents can be uploaded before application
     client_user_id INTEGER NOT NULL,
     document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('Payslip', 'ID', 'Proof_of_Residence')),
     s3_path VARCHAR(255) NOT NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    document_status VARCHAR(50) 
+        DEFAULT 'Pending' 
+        CHECK (document_status IN ('Pending', 'Verified', 'Rejected')),
     
     -- Foreign Keys
     CONSTRAINT fk_application
@@ -114,7 +117,7 @@ CREATE TABLE document (
     CONSTRAINT fk_client_user
         FOREIGN KEY (client_user_id)
         REFERENCES client_user (client_user_id)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE -- Changed to CASCADE for better data management
 );
 
 -- 6. Table: APPROVAL
