@@ -11,7 +11,7 @@ const app = express();
 
 // CORS should be here in the main app file
 app.use(cors({
-    origin: "*", // Allow all origins for development
+    origin: ["http://localhost:3000", "https://dojcd-admin-dashboard.vercel.app"],// Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true
 }));
