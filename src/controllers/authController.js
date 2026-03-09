@@ -3,25 +3,6 @@ const multer = require('multer');
 
 // ── Memory storage: files land in req.file.buffer, then go to Supabase ──────
 // Render's disk is ephemeral — never write user files there.
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {fileSize: 10 * 1024 * 1024}, // 10 MB per file
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = [
-            'application/pdf',
-            'image/jpeg', 'image/jpg', 'image/png',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ];
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Allowed: PDF, Images, Word, Excel'));
-        }
-    },
-});
 
 
 class AuthController {
