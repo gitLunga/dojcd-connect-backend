@@ -36,14 +36,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
  * @returns {Promise<string>} — the storage path stored in DB (e.g. 'invoices/invoice_3_1234.pdf')
  */
 async function uploadFile(buffer, mimeType, folder, prefix, userId) {
-    const ext      = getExtFromMime(mimeType);
+    const ext = getExtFromMime(mimeType);
     const filename = `${prefix}_${userId}_${Date.now()}${ext}`;
     const storagePath = `${folder}/${filename}`;
+
+    // ✅ Map the MIME type to what Supabase accepts
+    const normalizedMimeType = normalizeMimeType(mimeType);
+
+    console.log(`📤 Uploading: ${storagePath}`);
+    console.log(`   Original MIME: ${mimeType}`);
+    console.log(`   Normalized MIME: ${normalizedMimeType}`);
 
     const { error } = await supabase.storage
         .from(BUCKET)
         .upload(storagePath, buffer, {
-            contentType: mimeType,
+            contentType: normalizedMimeType,  // ✅ Use normalized MIME
             upsert: false,
         });
 
@@ -53,8 +60,9 @@ async function uploadFile(buffer, mimeType, folder, prefix, userId) {
     }
 
     console.log(`✅ Uploaded to Supabase: ${storagePath}`);
-    return storagePath; // stored in DB as s3_path / invoice_path
+    return storagePath;
 }
+
 
 /**
  * Generate a short-lived signed URL for a private file.
@@ -74,6 +82,21 @@ async function getSignedUrl(storagePath, expiresIn = 3600) {
     }
 
     return data.signedUrl;
+}
+
+function normalizeMimeType(mimeType) {
+    const mimeMap = {
+        'application/pdf': 'application/pdf',
+        'image/jpeg': 'image/jpeg',
+        'image/jpg': 'image/jpeg',  // Convert jpg to jpeg
+        'image/png': 'image/png',
+        'image/gif': 'image/gif',
+        'image/webp': 'image/webp',
+        'application/msword': 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+    return mimeMap[mimeType] || 'application/octet-stream';
 }
 
 /**
