@@ -1,39 +1,47 @@
 const db = require('../config/db');
 const path = require('path');
-const storage = require('../config/supabaseStorage'); // ← Supabase Storage
+const storage = require('../config/supabaseStorage');
+
 
 class AdminService {
-    // Returns storagePath (Supabase key) for the user's invoice
     async getClientInvoice(userId) {
         const result = await db.query(
-            `SELECT invoice_path FROM client_user WHERE client_user_id = $1`,
+            `SELECT invoice_path, first_name, last_name FROM client_user WHERE client_user_id = $1`,
             [userId]
         );
         if (result.rows.length === 0 || !result.rows[0].invoice_path) {
             throw new Error('Invoice not found for this user');
         }
         const storagePath = result.rows[0].invoice_path;
+        const { buffer, contentType } = await storage.downloadFile(storagePath);
         return {
-            storagePath,
-            fileName: path.basename(storagePath),
-            mimeType: storage.getMimeFromPath(storagePath),
+            buffer,
+            mimeType: contentType || storage.getMimeFromPath(storagePath),
+            fileName: `invoice_${result.rows[0].first_name}_${result.rows[0].last_name}${path.extname(storagePath)}`,
         };
     }
 
-    // Download invoice — proxied through backend (Supabase bucket is private)
     async downloadInvoice(userId, res) {
-        const invoiceInfo          = await this.getClientInvoice(userId);
-        const { buffer, contentType } = await storage.downloadFile(invoiceInfo.storagePath);
-
+        const invoiceInfo = await this.getClientInvoice(userId);
         res.setHeader('Content-Disposition', `attachment; filename="${invoiceInfo.fileName}"`);
-        res.setHeader('Content-Type', contentType || invoiceInfo.mimeType);
-        res.setHeader('Content-Length', buffer.length);
-        res.end(buffer);
+        res.setHeader('Content-Type', invoiceInfo.mimeType);
+        res.setHeader('Content-Length', invoiceInfo.buffer.length);
+        res.end(invoiceInfo.buffer);
     }
 
-    // Delegate mime resolution to the storage helper
+    // Helper method to get MIME type
     getMimeType(filePath) {
-        return storage.getMimeFromPath(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        };
+
+        return mimeTypes[ext] || 'application/octet-stream';
     }
 
     //Sphelele
@@ -138,7 +146,7 @@ class AdminService {
                      network_provider,
                      contract_duration_months,
                      contract_end_date,
-                     invoice_path, 
+                     invoice_path,
                      registration_status,
                      verification_notes,
                      created_at,
@@ -168,13 +176,13 @@ class AdminService {
     async getAllOperationalUsers() {
         try {
             const result = await db.query(
-                `SELECT 
-                    op_user_id,
-                    first_name,
-                    last_name,
-                    email,
-                    user_role
-                 FROM operational_user 
+                `SELECT
+                     op_user_id,
+                     first_name,
+                     last_name,
+                     email,
+                     user_role
+                 FROM operational_user
                  ORDER BY created_at DESC`,
                 []
             );
@@ -189,13 +197,13 @@ class AdminService {
     async getOperationalUserById(userId) {
         try {
             const result = await db.query(
-                `SELECT 
-                    op_user_id,
-                    first_name,
-                    last_name,
-                    email,
-                    user_role
-                 FROM operational_user 
+                `SELECT
+                     op_user_id,
+                     first_name,
+                     last_name,
+                     email,
+                     user_role
+                 FROM operational_user
                  WHERE op_user_id = $1`,
                 [userId]
             );
@@ -242,10 +250,10 @@ class AdminService {
         try {
             // Client user statistics
             const clientStats = await db.query(
-                `SELECT 
-                    registration_status,
-                    COUNT(*) as count
-                 FROM client_user 
+                `SELECT
+                     registration_status,
+                     COUNT(*) as count
+                 FROM client_user
                  GROUP BY registration_status`
             );
 
@@ -287,20 +295,20 @@ class AdminService {
     async getRecentRegistrations() {
         try {
             const result = await db.query(
-                `SELECT 
-                    'client' as user_type,
-                    client_user_id as id,
-                    first_name,
-                    last_name,
-                    email,
-                    registration_status,
-                    created_at
-                 FROM client_user 
+                `SELECT
+                     'client' as user_type,
+                     client_user_id as id,
+                     first_name,
+                     last_name,
+                     email,
+                     registration_status,
+                     created_at
+                 FROM client_user
                  WHERE created_at >= NOW() - INTERVAL '7 days'
-                 
+
                  UNION ALL
-                 
-                 SELECT 
+
+                SELECT
                     'operational' as user_type,
                     op_user_id as id,
                     first_name,
@@ -308,11 +316,11 @@ class AdminService {
                     email,
                     'Verified' as registration_status,
                     created_at
-                 FROM operational_user 
-                 WHERE created_at >= NOW() - INTERVAL '7 days'
-                 
-                 ORDER BY created_at DESC
-                 LIMIT 20`
+                FROM operational_user
+                WHERE created_at >= NOW() - INTERVAL '7 days'
+
+                ORDER BY created_at DESC
+                    LIMIT 20`
             );
 
             return result.rows;
@@ -325,26 +333,26 @@ class AdminService {
     async searchUsers(searchTerm) {
         try {
             const result = await db.query(
-                `SELECT 
-                    'client' as user_type,
-                    client_user_id as id,
-                    first_name,
-                    last_name,
-                    email,
-                    phone_number,
-                    persal_id,
-                    registration_status,
-                    user_type as client_user_type
-                 FROM client_user 
-                 WHERE 
-                    first_name ILIKE $1 OR
-                    last_name ILIKE $1 OR
-                    email ILIKE $1 OR
-                    persal_id ILIKE $1
-                 
+                `SELECT
+                     'client' as user_type,
+                     client_user_id as id,
+                     first_name,
+                     last_name,
+                     email,
+                     phone_number,
+                     persal_id,
+                     registration_status,
+                     user_type as client_user_type
+                 FROM client_user
+                 WHERE
+                     first_name ILIKE $1 OR
+                     last_name ILIKE $1 OR
+                     email ILIKE $1 OR
+                     persal_id ILIKE $1
+
                  UNION ALL
-                 
-                 SELECT 
+
+                SELECT
                     'operational' as user_type,
                     op_user_id as id,
                     first_name,
@@ -354,14 +362,14 @@ class AdminService {
                     NULL as persal_id,
                     'Verified' as registration_status,
                     user_role as client_user_type
-                 FROM operational_user 
-                 WHERE 
+                FROM operational_user
+                WHERE
                     first_name ILIKE $1 OR
                     last_name ILIKE $1 OR
                     email ILIKE $1
-                 
-                 ORDER BY last_name, first_name
-                 LIMIT 50`,
+
+                ORDER BY last_name, first_name
+                    LIMIT 50`,
                 [`%${searchTerm}%`]
             );
 
@@ -763,16 +771,13 @@ class AdminService {
                 return [];
             }
 
-            // Build document list — file existence is now guaranteed by Supabase Storage.
-            // We don't check fs.existsSync; if it was uploaded it's in storage.
             const documents = documentsResult.rows.map(doc => ({
                 document_id:     doc.document_id,
                 document_type:   doc.document_type,
                 is_invoice:      doc.is_invoice,
-                file_path:       doc.s3_path,      // Supabase storage key
                 file_name:       path.basename(doc.s3_path),
-                file_exists:     true,              // Trusting storage — uploaded = exists
-                file_size:       null,              // Not available without a HEAD request
+                file_exists:     !!doc.s3_path,
+                file_size:       null,
                 upload_date:     doc.upload_date,
                 document_status: doc.document_status,
                 application_id:  doc.application_id,
@@ -829,18 +834,19 @@ class AdminService {
                 throw new Error('Document not found');
             }
 
-            const doc        = result.rows[0];
-            const storagePath = doc.s3_path;
-            const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}_${path.basename(storagePath)}`
-                .replace(/[^a-zA-Z0-9._-]/g, '_');
+            const doc = result.rows[0];
 
-            // Download from Supabase Storage
-            const { buffer, contentType } = await storage.downloadFile(storagePath);
+            if (!doc.s3_path) throw new Error('Document file path missing in database');
+
+            const { buffer, contentType } = await storage.downloadFile(doc.s3_path);
+
+            const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}${path.extname(doc.s3_path)}`
+                .replace(/[^a-zA-Z0-9._-]/g, '_');
 
             return {
                 buffer,
                 fileName:       safeFileName,
-                mimeType:       contentType || storage.getMimeFromPath(storagePath),
+                mimeType:       contentType || storage.getMimeFromPath(doc.s3_path),
                 documentType:   doc.document_type,
                 documentStatus: doc.document_status,
             };

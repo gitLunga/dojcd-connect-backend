@@ -92,12 +92,13 @@ class AdminController {
         }
     }
 
-    // View invoice inline — file is fetched from Supabase Storage and proxied
+    // NEW METHOD: View invoice (inline in browser)
     async viewInvoice(req, res) {
         try {
             const { id } = req.params;
-            // downloadInvoice writes directly to res
+            // downloadInvoice writes buffer directly to res
             await adminService.downloadInvoice(id, res);
+
         } catch (error) {
             console.error('Invoice view error:', error);
             if (!res.headersSent) {
@@ -126,20 +127,14 @@ class AdminController {
             }
 
             const invoicePath = result.invoice_path;
-            const fullPath = path.join(__dirname, '..', invoicePath);
-
-            // Get file stats
-            const stats = fs.statSync(fullPath);
-
             res.status(200).json({
                 success: true,
                 message: 'Invoice info retrieved successfully',
                 data: {
-                    file_name: path.basename(invoicePath),
-                    file_path: invoicePath,
-                    file_size: stats.size,
-                    uploaded_date: stats.mtime,
-                    mime_type: adminService.getMimeType(fullPath)
+                    file_name:     path.basename(invoicePath),
+                    file_size:     null,
+                    uploaded_date: result.updated_at || result.created_at,
+                    mime_type:     adminService.getMimeType(invoicePath),
                 }
             });
 
@@ -460,16 +455,17 @@ class AdminController {
         }
     }
 
-// Download ANY document — buffer proxied from Supabase Storage
+// Download ANY document
     async downloadDocument(req, res) {
         try {
-            const { id }   = req.params;
-            const docInfo  = await adminService.downloadUserDocument(id);
+            const { id } = req.params; // document ID
+            const docInfo = await adminService.downloadUserDocument(id);
 
             res.setHeader('Content-Disposition', `attachment; filename="${docInfo.fileName}"`);
             res.setHeader('Content-Type', docInfo.mimeType);
             res.setHeader('Content-Length', docInfo.buffer.length);
             res.end(docInfo.buffer);
+
         } catch (error) {
             if (!res.headersSent) {
                 res.status(404).json({
@@ -482,16 +478,17 @@ class AdminController {
         }
     }
 
-// View ANY document inline — buffer proxied from Supabase Storage
+// View ANY document inline
     async viewDocument(req, res) {
         try {
-            const { id }   = req.params;
-            const docInfo  = await adminService.viewUserDocument(id); // same as downloadUserDocument
+            const { id } = req.params;
+            const docInfo = await adminService.viewUserDocument(id);
 
             res.setHeader('Content-Disposition', `inline; filename="${docInfo.fileName}"`);
             res.setHeader('Content-Type', docInfo.mimeType);
             res.setHeader('Content-Length', docInfo.buffer.length);
             res.end(docInfo.buffer);
+
         } catch (error) {
             if (!res.headersSent) {
                 res.status(404).json({
