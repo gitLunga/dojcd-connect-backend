@@ -46,7 +46,7 @@ class AdminController {
     // Get client user by ID
     async getClientUserById(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             const user = await adminService.getClientUserById(id);
 
             res.status(200).json({
@@ -70,7 +70,7 @@ class AdminController {
     // NEW METHOD: Download invoice
     async downloadInvoice(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             await adminService.downloadInvoice(id, res);
             // Note: The response is handled by the downloadInvoice method
             // No need to send JSON response here
@@ -95,7 +95,7 @@ class AdminController {
     // NEW METHOD: View invoice (inline in browser)
     async viewInvoice(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             // downloadInvoice writes buffer directly to res
             await adminService.downloadInvoice(id, res);
 
@@ -115,7 +115,7 @@ class AdminController {
     // NEW METHOD: Get invoice info (metadata only)
     async getInvoiceInfo(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             const result = await adminService.getClientUserById(id);
 
             if (!result.invoice_path) {
@@ -131,10 +131,10 @@ class AdminController {
                 success: true,
                 message: 'Invoice info retrieved successfully',
                 data: {
-                    file_name:     path.basename(invoicePath),
-                    file_size:     null,
+                    file_name: path.basename(invoicePath),
+                    file_size: null,
                     uploaded_date: result.updated_at || result.created_at,
-                    mime_type:     adminService.getMimeType(invoicePath),
+                    mime_type: adminService.getMimeType(invoicePath),
                 }
             });
 
@@ -173,7 +173,7 @@ class AdminController {
     // Get operational user by ID
     async getOperationalUserById(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             const user = await adminService.getOperationalUserById(id);
 
             res.status(200).json({
@@ -193,11 +193,12 @@ class AdminController {
             });
         }
     }
+
     // Update user registration status
     async updateUserStatus(req, res) {
         try {
-            const { id } = req.params;
-            const { status, notes } = req.body;
+            const {id} = req.params;
+            const {status, notes} = req.body;
 
 
             const normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
@@ -281,7 +282,7 @@ class AdminController {
     // Search users
     async searchUsers(req, res) {
         try {
-            const { query } = req.query;
+            const {query} = req.query;
 
             if (!query || query.trim().length < 2) {
                 return res.status(400).json({
@@ -362,6 +363,7 @@ class AdminController {
             });
         }
     }
+
     // Add these methods to your existing AdminController class
 
 // Get enhanced statistics
@@ -433,7 +435,7 @@ class AdminController {
     //DOCUMENTS
     async getAllUserDocuments(req, res) {
         try {
-            const { id } = req.params;
+            const {id} = req.params;
             const documents = await adminService.getAllUserDocuments(id);
 
             res.status(200).json({
@@ -458,7 +460,7 @@ class AdminController {
 // Download ANY document
     async downloadDocument(req, res) {
         try {
-            const { id } = req.params; // document ID
+            const {id} = req.params; // document ID
             const docInfo = await adminService.downloadUserDocument(id);
 
             res.setHeader('Content-Disposition', `attachment; filename="${docInfo.fileName}"`);
@@ -484,18 +486,18 @@ class AdminController {
             const { id } = req.params;
             const docInfo = await adminService.viewUserDocument(id);
 
+            // ✅ Send headers BEFORE ending response
             res.setHeader('Content-Disposition', `inline; filename="${docInfo.fileName}"`);
-            res.setHeader('Content-Type', docInfo.mimeType);
+            res.setHeader('Content-Type', docInfo.mimeType);  // CRITICAL
             res.setHeader('Content-Length', docInfo.buffer.length);
-            res.end(docInfo.buffer);
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
+            res.end(docInfo.buffer);
         } catch (error) {
             if (!res.headersSent) {
                 res.status(404).json({
                     success: false,
-                    message: error.message,
-                    data: null,
-                    timestamp: new Date().toISOString()
+                    message: error.message
                 });
             }
         }
@@ -504,8 +506,8 @@ class AdminController {
 // Update document status
     async updateDocumentStatus(req, res) {
         try {
-            const { id } = req.params;
-            const { status, notes } = req.body;
+            const {id} = req.params;
+            const {status, notes} = req.body;
 
             const updatedDoc = await adminService.updateDocumentStatus(id, status, notes);
 
