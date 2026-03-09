@@ -1,6 +1,7 @@
 const adminService = require('../services/adminService');
 const path = require('path');
-
+const storage = require('../config/supabaseStorage');
+// ✅ Add this at the top
 class AdminController {
 
     //Sphelele
@@ -458,41 +459,23 @@ class AdminController {
     }
 
 // Download ANY document
-    async downloadDocument(req, res) {
-        try {
-            const {id} = req.params; // document ID
-            const docInfo = await adminService.downloadUserDocument(id);
-
-            res.setHeader('Content-Disposition', `attachment; filename="${docInfo.fileName}"`);
-            res.setHeader('Content-Type', docInfo.mimeType);
-            res.setHeader('Content-Length', docInfo.buffer.length);
-            res.end(docInfo.buffer);
-
-        } catch (error) {
-            if (!res.headersSent) {
-                res.status(404).json({
-                    success: false,
-                    message: error.message,
-                    data: null,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-    }
-
-// View ANY document inline
+    // View ANY document inline - UPDATED to use signed URLs
     async viewDocument(req, res) {
         try {
             const { id } = req.params;
             const docInfo = await adminService.viewUserDocument(id);
 
-            // ✅ Send headers BEFORE ending response
-            res.setHeader('Content-Disposition', `inline; filename="${docInfo.fileName}"`);
-            res.setHeader('Content-Type', docInfo.mimeType);  // CRITICAL
-            res.setHeader('Content-Length', docInfo.buffer.length);
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            // ✅ Generate a signed URL instead of proxying the file
+            const signedUrl = await storage.getSignedUrl(docInfo.s3_path, 3600); // 1 hour
 
-            res.end(docInfo.buffer);
+            res.status(200).json({
+                success: true,
+                url: signedUrl,
+                fileName: docInfo.fileName,
+                mimeType: docInfo.mimeType,
+                documentType: docInfo.documentType,
+                documentStatus: docInfo.documentStatus
+            });
         } catch (error) {
             if (!res.headersSent) {
                 res.status(404).json({
@@ -500,6 +483,29 @@ class AdminController {
                     message: error.message
                 });
             }
+        }
+    }
+
+// Download ANY document - also use signed URL
+    async downloadDocument(req, res) {
+        try {
+            const { id } = req.params;
+            const docInfo = await adminService.downloadUserDocument(id);
+
+            // ✅ Generate signed URL and redirect/return it
+            const signedUrl = await storage.getSignedUrl(docInfo.s3_path, 3600);
+
+            res.status(200).json({
+                success: true,
+                url: signedUrl,
+                fileName: docInfo.fileName,
+                mimeType: docInfo.mimeType
+            });
+        } catch (error) {
+            res.status(404).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
