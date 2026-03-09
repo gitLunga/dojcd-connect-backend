@@ -14,15 +14,16 @@ class AdminService {
         if (result.rows.length === 0 || !result.rows[0].invoice_path) {
             throw new Error('Invoice not found for this user');
         }
+
         const storagePath = result.rows[0].invoice_path;
-        const {buffer, contentType} = await storage.downloadFile(storagePath);
+        // ✅ Just return the path, don't download!
         return {
-            buffer,
-            mimeType: contentType || storage.getMimeFromPath(storagePath),
+            invoice_path: storagePath,  // ✅ Add this
+            mimeType: storage.getMimeFromPath(storagePath),
             fileName: `invoice_${result.rows[0].first_name}_${result.rows[0].last_name}${path.extname(storagePath)}`,
         };
     }
-
+    
     async downloadInvoice(userId, res) {
         const invoiceInfo = await this.getClientInvoice(userId);
         res.setHeader('Content-Disposition', `attachment; filename="${invoiceInfo.fileName}"`);

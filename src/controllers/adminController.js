@@ -70,47 +70,72 @@ class AdminController {
     }
 
     // NEW METHOD: Download invoice
-    async downloadInvoice(req, res) {
-        try {
-            const {id} = req.params;
-            await adminService.downloadInvoice(id, res);
-            // Note: The response is handled by the downloadInvoice method
-            // No need to send JSON response here
-        } catch (error) {
-            console.error('Invoice download error:', error);
-
-            // If headers haven't been sent yet, send error JSON
-            if (!res.headersSent) {
-                res.status(404).json({
-                    success: false,
-                    message: error.message,
-                    data: null,
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                // If headers were sent, end the response
-                res.end();
-            }
-        }
-    }
+    // async downloadInvoice(req, res) {
+    //     try {
+    //         const {id} = req.params;
+    //         await adminService.downloadInvoice(id, res);
+    //         // Note: The response is handled by the downloadInvoice method
+    //         // No need to send JSON response here
+    //     } catch (error) {
+    //         console.error('Invoice download error:', error);
+    //
+    //         // If headers haven't been sent yet, send error JSON
+    //         if (!res.headersSent) {
+    //             res.status(404).json({
+    //                 success: false,
+    //                 message: error.message,
+    //                 data: null,
+    //                 timestamp: new Date().toISOString()
+    //             });
+    //         } else {
+    //             // If headers were sent, end the response
+    //             res.end();
+    //         }
+    //     }
+    // }
 
     // NEW METHOD: View invoice (inline in browser)
     async viewInvoice(req, res) {
         try {
-            const {id} = req.params;
-            // downloadInvoice writes buffer directly to res
-            await adminService.downloadInvoice(id, res);
+            const { id } = req.params; // userId
+            const invoiceInfo = await adminService.getClientInvoice(id);
 
+            // ✅ Generate signed URL
+            const signedUrl = await storage.getSignedUrl(invoiceInfo.invoice_path, 3600);
+
+            res.status(200).json({
+                success: true,
+                url: signedUrl,
+                fileName: invoiceInfo.fileName,
+                mimeType: invoiceInfo.mimeType
+            });
         } catch (error) {
-            console.error('Invoice view error:', error);
-            if (!res.headersSent) {
-                res.status(404).json({
-                    success: false,
-                    message: error.message,
-                    data: null,
-                    timestamp: new Date().toISOString()
-                });
-            }
+            res.status(404).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    async downloadInvoice(req, res) {
+        try {
+            const { id } = req.params;
+            const invoiceInfo = await adminService.getClientInvoice(id);
+
+            // ✅ Generate signed URL
+            const signedUrl = await storage.getSignedUrl(invoiceInfo.invoice_path, 3600);
+
+            res.status(200).json({
+                success: true,
+                url: signedUrl,
+                fileName: invoiceInfo.fileName,
+                mimeType: invoiceInfo.mimeType
+            });
+        } catch (error) {
+            res.status(404).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
