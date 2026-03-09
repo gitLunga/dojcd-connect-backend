@@ -2,9 +2,12 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Determine environment
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const envFile = NODE_ENV === 'production' ? '.env.production' : '.env';
+// Set process.env.NODE_ENV explicitly
+if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'development';
+}
+
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env';
 
 // Load the appropriate .env file
 console.log(`📁 Loading environment from: ${envFile}`);
@@ -22,7 +25,7 @@ const app = require("./src/app");
 const PORT = process.env.PORT || 5000;
 
 console.log("🚀 Starting server...");
-console.log(`🌍 NODE_ENV: ${NODE_ENV}`);
+console.log(`🌍 NODE_ENV: ${process.env.NODE_ENV}`);  // Use process.env.NODE_ENV here
 console.log(`📦 DATABASE_URL: ${process.env.DATABASE_URL ? 'Set ✓' : 'Not set ✗'}`);
 
 // Start server

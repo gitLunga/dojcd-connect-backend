@@ -1,57 +1,67 @@
 // controllers/applicationController.js
-const express = require('express');
-const router = express.Router();
 const applicationService = require('../../services/Application/applicationService.js');
 
+// ─── Utility: success response ────────────────────────────────────────────────
+function ok(res, message, data = null, statusCode = 200) {
+    return res.status(statusCode).json({
+        success: true,
+        message,
+        data,
+        timestamp: new Date().toISOString()
+    });
+}
+
+// ─── Utility: error response ──────────────────────────────────────────────────
+function fail(res, message, statusCode = 400) {
+    return res.status(statusCode).json({
+        success: false,
+        message,
+        data: null,
+        timestamp: new Date().toISOString()
+    });
+}
+
 const applicationController = {
-    // Get available devices
+
+    // ─── GET AVAILABLE DEVICES ────────────────────────────────────────────────
+
     getAvailableDevices: async (req, res) => {
         try {
             const devices = await applicationService.getAvailableDevices();
-            res.json({
-                success: true,
-                data: devices,
-                count: devices.length
-            });
+
+            if (devices.length === 0) {
+                return ok(res, 'No devices are currently available. Please check back later.', { devices, count: 0 });
+            }
+
+            return ok(res, `${devices.length} device(s) available.`, { devices, count: devices.length });
         } catch (error) {
             console.error('Get devices error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to fetch devices'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    // Get device details
+    // ─── GET DEVICE DETAILS ───────────────────────────────────────────────────
+
     getDeviceDetails: async (req, res) => {
         try {
             const { deviceId } = req.params;
             const device = await applicationService.getDeviceById(parseInt(deviceId));
-
-            res.json({
-                success: true,
-                data: device
-            });
+            return ok(res, 'Device details retrieved successfully.', { device });
         } catch (error) {
             console.error('Get device details error:', error);
-            res.status(404).json({
-                success: false,
-                message: error.message
-            });
+            const status = error.message.includes('no longer available') ? 404 : 500;
+            return fail(res, error.message, status);
         }
     },
 
-    // Submit application
+    // ─── SUBMIT APPLICATION ───────────────────────────────────────────────────
+
     submitApplication: async (req, res) => {
         try {
             const { client_user_id, device_id } = req.body;
 
-            // Validate required fields
             if (!client_user_id || !device_id) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'client_user_id and device_id are required'
-                });
+                return fail(res, 'Please provide both your user ID and the selected device to apply.', 400);
             }
 
             const result = await applicationService.submitApplication(
@@ -60,50 +70,43 @@ const applicationController = {
             );
 
             if (result.success) {
-                res.status(201).json(result);
-            } else {
-                res.status(400).json(result);
+                return ok(res, result.message, { application: result.application }, 201);
             }
+
+            // Business-rule failures (eligibility, duplicate, etc.) → 422
+            return fail(res, result.message, 422);
 
         } catch (error) {
             console.error('Submit application error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Internal server error'
-            });
+            return fail(res, 'Something went wrong while submitting your application. Please try again.', 500);
         }
     },
 
-    // Get user applications
+    // ─── GET USER APPLICATIONS ────────────────────────────────────────────────
+
     getUserApplications: async (req, res) => {
         try {
             const { clientUserId } = req.params;
 
             if (!clientUserId) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'clientUserId is required'
-                });
+                return fail(res, 'User ID is required.', 400);
             }
 
             const applications = await applicationService.getUserApplications(parseInt(clientUserId));
 
-            res.json({
-                success: true,
-                data: applications,
-                count: applications.length
-            });
+            if (applications.length === 0) {
+                return ok(res, 'You have not submitted any applications yet.', { applications, count: 0 });
+            }
 
+            return ok(res, `You have ${applications.length} application(s).`, { applications, count: applications.length });
         } catch (error) {
             console.error('Get user applications error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to fetch applications'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    // Get application details
+    // ─── GET APPLICATION DETAILS ──────────────────────────────────────────────
+
     getApplicationDetails: async (req, res) => {
         try {
             const { clientUserId, applicationId } = req.params;
@@ -113,21 +116,16 @@ const applicationController = {
                 parseInt(clientUserId)
             );
 
-            res.json({
-                success: true,
-                data: application
-            });
-
+            return ok(res, 'Application details retrieved successfully.', { application });
         } catch (error) {
             console.error('Get application details error:', error);
-            res.status(404).json({
-                success: false,
-                message: error.message
-            });
+            const status = error.message.includes('not found') ? 404 : 500;
+            return fail(res, error.message, status);
         }
     },
 
-    // Cancel application
+    // ─── CANCEL APPLICATION ───────────────────────────────────────────────────
+
     cancelApplication: async (req, res) => {
         try {
             const { clientUserId, applicationId } = req.params;
@@ -138,68 +136,53 @@ const applicationController = {
             );
 
             if (result.success) {
-                res.json(result);
-            } else {
-                res.status(400).json(result);
+                return ok(res, result.message, { application: result.application });
             }
+
+            // Business-rule failures → 422
+            return fail(res, result.message, 422);
 
         } catch (error) {
             console.error('Cancel application error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Internal server error'
-            });
+            return fail(res, 'Something went wrong while cancelling your application. Please try again.', 500);
         }
     },
 
-    // Get application summary
+    // ─── GET APPLICATION SUMMARY ──────────────────────────────────────────────
+
     getApplicationSummary: async (req, res) => {
         try {
             const { clientUserId } = req.params;
-
             const summary = await applicationService.getApplicationSummary(parseInt(clientUserId));
-
-            res.json({
-                success: true,
-                data: summary
-            });
-
+            return ok(res, 'Application summary retrieved successfully.', { summary });
         } catch (error) {
             console.error('Get application summary error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to fetch summary'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    // Check user eligibility
+    // ─── CHECK ELIGIBILITY ────────────────────────────────────────────────────
+
     checkEligibility: async (req, res) => {
         try {
             const { clientUserId } = req.params;
-
             const eligibility = await applicationService.checkUserEligibility(parseInt(clientUserId));
 
-            res.json({
-                success: true,
-                data: eligibility
-            });
+            const message = eligibility.eligible
+                ? 'Your account is verified and you are eligible to apply.'
+                : eligibility.reason;
 
+            return ok(res, message, { eligibility });
         } catch (error) {
             console.error('Check eligibility error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to check eligibility'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    //// controllers/applicationController.js - Add these updated methods
+    // ─── ADMIN: GET ALL APPLICATIONS ──────────────────────────────────────────
 
-    // Get all applications (Admin)
     getAllApplications: async (req, res) => {
         try {
-            // Extract filters from query parameters
             const filters = {
                 status: req.query.status,
                 device_id: req.query.device_id,
@@ -214,92 +197,63 @@ const applicationController = {
 
             const result = await applicationService.getAllApplications(filters);
 
-            res.json({
-                success: true,
-                ...result
-            });
+            const message = result.count === 0
+                ? 'No applications found matching the selected filters.'
+                : `${result.count} application(s) retrieved successfully.`;
 
+            return ok(res, message, { applications: result.data, count: result.count });
         } catch (error) {
             console.error('Get all applications error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to fetch applications'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    // Update application status (Admin)
+    // ─── ADMIN: UPDATE APPLICATION STATUS ────────────────────────────────────
+
     updateApplicationStatus: async (req, res) => {
         try {
             const { applicationId } = req.params;
-            const {
-                status,
-                rejection_reason,
-                notes,
-                approver_id,
-                is_admin = false
-            } = req.body;
+            const { status, rejection_reason, notes, approver_id, is_admin = false } = req.body;
 
-            // Validate required fields
             if (!status) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'status is required'
-                });
+                return fail(res, 'Please provide a status to update.', 400);
             }
 
-            // Validate status matches database enum
             const validStatuses = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
             if (!validStatuses.includes(status)) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-                });
+                return fail(res, `"${status}" is not a valid status. Please use one of: ${validStatuses.join(', ')}.`, 400);
             }
 
-            // Check if approver ID is required for approval
             if (status === 'Approved' && !approver_id) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'approver_id is required for approval'
-                });
+                return fail(res, 'An approver ID is required to approve an application.', 400);
             }
 
-            // Check if rejection reason is required
             if (status === 'Rejected' && !rejection_reason) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'rejection_reason is required for rejected applications'
-                });
+                return fail(res, 'Please provide a reason for rejecting this application.', 400);
             }
 
             const result = await applicationService.updateApplicationStatus(
                 parseInt(applicationId),
-                {
-                    status,
-                    rejection_reason,
-                    notes,
-                    is_admin
-                },
+                { status, rejection_reason, notes, is_admin },
                 approver_id ? parseInt(approver_id) : null
             );
 
             if (result.success) {
-                res.json(result);
-            } else {
-                res.status(400).json(result);
+                return ok(res, result.message, { application: result.application });
             }
+
+            // already-finalised or business rule → 409 Conflict or 422
+            const statusCode = result.message.includes('already been') ? 409 : 422;
+            return fail(res, result.message, statusCode);
 
         } catch (error) {
             console.error('Update application status error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message || 'Failed to update application status'
-            });
+            return fail(res, error.message || 'Something went wrong. Please try again.', 500);
         }
     },
 
-    // Get application statistics (Admin)
+    // ─── ADMIN: STATISTICS ────────────────────────────────────────────────────
+
     getApplicationStatistics: async (req, res) => {
         try {
             const filters = {
@@ -309,49 +263,28 @@ const applicationController = {
             };
 
             const result = await applicationService.getApplicationStatistics(filters);
-
-            res.json({
-                success: true,
-                ...result
-            });
-
+            return ok(res, 'Application statistics retrieved successfully.', result.data);
         } catch (error) {
             console.error('Get application statistics error:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to fetch application statistics'
-            });
+            return fail(res, error.message, 500);
         }
     },
 
-    // Get application details (Admin version - more details)
+    // ─── ADMIN: APPLICATION DETAILS ───────────────────────────────────────────
+
     getAdminApplicationDetails: async (req, res) => {
         try {
             const { applicationId } = req.params;
-            console.log('First ID: ',applicationId)
             const id = parseInt(applicationId);
-            console.log('Parsed applicationId:', id);
 
             const application = await applicationService.getAdminApplicationDetails(id);
-
-
-            res.json({
-                success: true,
-                data: application
-            });
-
+            return ok(res, 'Application details retrieved successfully.', { application });
         } catch (error) {
             console.error('Get admin application details error:', error);
-            res.status(404).json({
-                success: false,
-                message: error.message
-            });
+            const status = error.message.includes('not found') ? 404 : 500;
+            return fail(res, error.message, status);
         }
     }
-
-
-
-
 };
 
 module.exports = applicationController;
