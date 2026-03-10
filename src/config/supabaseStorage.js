@@ -66,7 +66,7 @@ async function downloadFile(storagePath) {
 async function getSignedUrl(storagePath, expiresIn = 300) {
     if (IS_LOCAL) {
         const encoded = encodeURIComponent(storagePath);
-        return `http://localhost:${process.env.PORT || 5000}/api/admin/local-file/${encoded}`;
+        return `http://localhost:${process.env.PORT || 5000}/api/files/${encoded}`;
     }
     const { data, error } = await getSupabase().storage
         .from(BUCKET).createSignedUrl(storagePath, expiresIn);
@@ -90,7 +90,7 @@ async function deleteFile(storagePath) {
 const express = require('express');
 const localFileRouter = express.Router();
 
-localFileRouter.get('/local-file/:encodedPath', (req, res) => {
+localFileRouter.get('/:encodedPath', (req, res) => {
     try {
         const storagePath = decodeURIComponent(req.params.encodedPath);
         const absPath     = resolveLocalPath(storagePath);
