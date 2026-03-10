@@ -1,8 +1,6 @@
-const storage = require('../config/supabaseStorage');
-
 const adminService = require('../services/adminService');
 const path = require('path');
-// ✅ Add this at the top
+
 class AdminController {
 
     //Sphelele
@@ -70,71 +68,48 @@ class AdminController {
     }
 
     // NEW METHOD: Download invoice
-    // async downloadInvoice(req, res) {
-    //     try {
-    //         const {id} = req.params;
-    //         await adminService.downloadInvoice(id, res);
-    //         // Note: The response is handled by the downloadInvoice method
-    //         // No need to send JSON response here
-    //     } catch (error) {
-    //         console.error('Invoice download error:', error);
-    //
-    //         // If headers haven't been sent yet, send error JSON
-    //         if (!res.headersSent) {
-    //             res.status(404).json({
-    //                 success: false,
-    //                 message: error.message,
-    //                 data: null,
-    //                 timestamp: new Date().toISOString()
-    //             });
-    //         } else {
-    //             // If headers were sent, end the response
-    //             res.end();
-    //         }
-    //     }
-    // }
-
-    // NEW METHOD: View invoice (inline in browser)
-    async viewInvoice(req, res) {
+    async downloadInvoice(req, res) {
         try {
-            const { id } = req.params; // userId
-            const invoiceInfo = await adminService.getClientInvoice(id);
-
-            // ✅ Generate signed URL
-            const signedUrl = await storage.getSignedUrl(invoiceInfo.invoice_path, 3600);
-
+            const {id} = req.params;
+            const signedUrl = await adminService.getInvoiceSignedUrl(parseInt(id));
+            const meta = await adminService.getClientInvoice(parseInt(id));
             res.status(200).json({
                 success: true,
+                message: 'Download URL generated',
                 url: signedUrl,
-                fileName: invoiceInfo.fileName,
-                mimeType: invoiceInfo.mimeType
+                fileName: meta.fileName,
+                mimeType: meta.mimeType,
             });
         } catch (error) {
             res.status(404).json({
                 success: false,
-                message: error.message
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
             });
         }
     }
 
-    async downloadInvoice(req, res) {
+    // NEW METHOD: View invoice (inline in browser)
+    async viewInvoice(req, res) {
         try {
-            const { id } = req.params;
-            const invoiceInfo = await adminService.getClientInvoice(id);
-
-            // ✅ Generate signed URL
-            const signedUrl = await storage.getSignedUrl(invoiceInfo.invoice_path, 3600);
-
+            const {id} = req.params;
+            const signedUrl = await adminService.getInvoiceSignedUrl(parseInt(id));
+            const meta = await adminService.getClientInvoice(parseInt(id));
             res.status(200).json({
                 success: true,
+                message: 'Invoice URL generated',
                 url: signedUrl,
-                fileName: invoiceInfo.fileName,
-                mimeType: invoiceInfo.mimeType
+                fileName: meta.fileName,
+                mimeType: meta.mimeType,
             });
         } catch (error) {
-            res.status(404).json({
+            const isLegacy = error.message.includes('before cloud storage');
+            res.status(isLegacy ? 410 : 404).json({
                 success: false,
-                message: error.message
+                legacy: isLegacy,
+                message: error.message,
+                data: null,
             });
         }
     }
@@ -485,52 +460,50 @@ class AdminController {
     }
 
 // Download ANY document
-    // View ANY document inline - UPDATED to use signed URLs
-    async viewDocument(req, res) {
+    async downloadDocument(req, res) {
         try {
-            const { id } = req.params;
-            const docInfo = await adminService.viewUserDocument(id);
-
-            // ✅ Generate a signed URL instead of proxying the file
-            const signedUrl = await storage.getSignedUrl(docInfo.s3_path, 3600); // 1 hour
-
+            const {id} = req.params;
+            const docId = parseInt(id);
+            const signedUrl = await adminService.getDocumentSignedUrl(docId);
+            const docInfo = await adminService.downloadUserDocument(docId);
             res.status(200).json({
                 success: true,
+                message: 'Download URL generated',
                 url: signedUrl,
                 fileName: docInfo.fileName,
                 mimeType: docInfo.mimeType,
-                documentType: docInfo.documentType,
-                documentStatus: docInfo.documentStatus
-            });
-        } catch (error) {
-            if (!res.headersSent) {
-                res.status(404).json({
-                    success: false,
-                    message: error.message
-                });
-            }
-        }
-    }
-
-// Download ANY document - also use signed URL
-    async downloadDocument(req, res) {
-        try {
-            const { id } = req.params;
-            const docInfo = await adminService.downloadUserDocument(id);
-
-            // ✅ Generate signed URL and redirect/return it
-            const signedUrl = await storage.getSignedUrl(docInfo.s3_path, 3600);
-
-            res.status(200).json({
-                success: true,
-                url: signedUrl,
-                fileName: docInfo.fileName,
-                mimeType: docInfo.mimeType
             });
         } catch (error) {
             res.status(404).json({
                 success: false,
-                message: error.message
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// View ANY document inline
+    async viewDocument(req, res) {
+        try {
+            const {id} = req.params;
+            const docId = parseInt(id);
+            const signedUrl = await adminService.getDocumentSignedUrl(docId);
+            const docInfo = await adminService.viewUserDocument(docId);
+            res.status(200).json({
+                success: true,
+                message: 'Document URL generated',
+                url: signedUrl,
+                fileName: docInfo.fileName,
+                mimeType: docInfo.mimeType,
+            });
+        } catch (error) {
+            const isLegacy = error.message.includes('before cloud storage');
+            res.status(isLegacy ? 410 : 404).json({
+                success: false,
+                legacy: isLegacy,
+                message: error.message,
+                data: null,
             });
         }
     }
@@ -558,6 +531,27 @@ class AdminController {
                 data: null,
                 timestamp: new Date().toISOString()
             });
+        }
+    }
+
+    // Returns a signed Supabase URL — frontend opens this directly, no blob proxying
+    async getDocumentSignedUrl(req, res) {
+        try {
+            const {id} = req.params;
+            const signedUrl = await adminService.getDocumentSignedUrl(parseInt(id));
+            res.status(200).json({success: true, message: 'Signed URL generated', data: {url: signedUrl}});
+        } catch (error) {
+            res.status(404).json({success: false, message: error.message, data: null});
+        }
+    }
+
+    async getInvoiceSignedUrl(req, res) {
+        try {
+            const {id} = req.params;
+            const signedUrl = await adminService.getInvoiceSignedUrl(parseInt(id));
+            res.status(200).json({success: true, message: 'Signed URL generated', data: {url: signedUrl}});
+        } catch (error) {
+            res.status(404).json({success: false, message: error.message, data: null});
         }
     }
 
