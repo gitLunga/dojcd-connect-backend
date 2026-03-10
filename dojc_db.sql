@@ -99,7 +99,7 @@ CREATE TABLE notification (
 -- 5. Table: DOCUMENT
 CREATE TABLE document (
     document_id SERIAL PRIMARY KEY,
-    application_id INTEGER NOT NULL,
+    application_id INTEGER,
     client_user_id INTEGER NOT NULL,
     document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('Payslip', 'ID', 'Proof_of_Residence')),
     s3_path VARCHAR(255) NOT NULL,
