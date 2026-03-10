@@ -104,7 +104,7 @@ CREATE TABLE document (
     document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('Payslip', 'ID', 'Proof_of_Residence')),
     s3_path VARCHAR(255) NOT NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    document_status VARCHAR(20) NOT NULL DEFAULT 'Pending' CHECK (document_status IN ('Pending', 'Approved', 'Rejected')),
+    document_status VARCHAR(20) NOT NULL DEFAULT 'Pending' CHECK (document_status IN ('Pending', 'Approved', 'Rejected', 'Verified')),
     verification_notes TEXT,
     verification_date TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_application FOREIGN KEY (application_id) REFERENCES application (application_id) ON DELETE CASCADE,
