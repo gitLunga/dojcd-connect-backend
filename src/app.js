@@ -4,6 +4,7 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const applicationRoutes = require('./routes/Application/applicationRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -48,5 +49,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/applications', applicationRoutes);
 
 app.use('/api/notifications', notificationRoutes);
+
+//device routes
+app.use('/api', deviceRoutes);
 
 module.exports = app;
