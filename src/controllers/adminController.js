@@ -555,6 +555,229 @@ class AdminController {
         }
     }
 
+    // ── CREATE OPERATIONAL USER ──────────────────────────────────────────────────
+    async createOperationalUser(req, res) {
+        try {
+            const { first_name, last_name, email, user_role } = req.body;
+
+            // Basic validation
+            if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !user_role) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'First name, last name, email, and role are required.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please provide a valid email address.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const validRoles = ['Admin', 'Manager', 'Support'];
+            if (!validRoles.includes(user_role)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid role. Must be one of: ${validRoles.join(', ')}.`,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const { user, defaultPassword } = await adminService.createOperationalUser(req.body);
+
+            return res.status(201).json({
+                success: true,
+                message: `${user.first_name} ${user.last_name} has been added as a ${user.user_role}.`,
+                data: { user, default_password: defaultPassword, },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            const isDuplicate = error.message.includes('already exists');
+            return res.status(isDuplicate ? 409 : 500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// ── UPDATE OPERATIONAL USER ──────────────────────────────────────────────────
+    async updateOperationalUser(req, res) {
+        try {
+            const { id } = req.params;
+            const { title, first_name, last_name, email, user_role } = req.body;
+
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please provide a valid email address.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            if (user_role) {
+                const validRoles = ['Admin', 'Manager', 'Support'];
+                if (!validRoles.includes(user_role)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Invalid role. Must be one of: ${validRoles.join(', ')}.`,
+                        data: null,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+
+            const user = await adminService.updateOperationalUser(id, req.body);
+
+            return res.status(200).json({
+                success: true,
+                message: `${user.first_name} ${user.last_name}'s profile has been updated.`,
+                data: { user },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            const isDuplicate = error.message.includes('already exists');
+            const isNotFound = error.message.includes('not found');
+            return res.status(isDuplicate ? 409 : isNotFound ? 404 : 500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+// ── DELETE OPERATIONAL USER ──────────────────────────────────────────────────
+    async deleteOperationalUser(req, res) {
+        try {
+            const { id } = req.params;
+            const deleted = await adminService.deleteOperationalUser(id);
+
+            return res.status(200).json({
+                success: true,
+                message: `${deleted.first_name} ${deleted.last_name} has been removed.`,
+                data: { user: deleted },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            const isNotFound = error.message.includes('not found');
+            return res.status(isNotFound ? 404 : 500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    async changeOperationalUserPassword(req, res) {
+        try {
+            const {id} = req.params;
+            const {current_password, new_password, confirm_password} = req.body;
+
+            if (!current_password || !new_password || !confirm_password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Current password, new password, and confirmation are required.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            if (new_password !== confirm_password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'New password and confirmation do not match.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            if (new_password.length < 8) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'New password must be at least 8 characters.',
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            await adminService.changeOperationalUserPassword(id, current_password, new_password);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Password changed successfully.',
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            const isAuth = error.message.includes('incorrect');
+            return res.status(isAuth ? 401 : 500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    async promoteToSuperAdmin(req, res) {
+        try {
+            const {id} = req.params;
+            const user = await adminService.promoteToSuperAdmin(id);
+            return res.status(200).json({
+                success: true,
+                message: `${user.first_name} ${user.last_name} has been promoted to Super Admin.`,
+                data: {user},
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            return res.status(error.message.includes('not found') ? 404 : 500).json({
+                success: false, message: error.message,
+                data: null, timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    async demoteSuperAdmin(req, res) {
+        try {
+            const {id} = req.params;
+
+            // Prevent demoting yourself
+            const requestingUser = req.user; // from your JWT middleware
+            if (requestingUser?.op_user_id === parseInt(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'You cannot demote yourself.',
+                    data: null, timestamp: new Date().toISOString()
+                });
+            }
+
+            const user = await adminService.demoteSuperAdmin(id);
+            return res.status(200).json({
+                success: true,
+                message: `${user.first_name} ${user.last_name} has been demoted from Super Admin.`,
+                data: {user},
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            return res.status(error.message.includes('not found') ? 404 : 500).json({
+                success: false, message: error.message,
+                data: null, timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+
+
 
 }
 

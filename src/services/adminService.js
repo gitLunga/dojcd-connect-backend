@@ -1,19 +1,22 @@
 const db = require('../config/db');
 const path = require('path');
 const storage = require('../config/supabaseStorage');
+const bcrypt = require('bcrypt');
 
 
 class AdminService {
     async getClientInvoice(userId) {
         const result = await db.query(
-            `SELECT invoice_path, first_name, last_name FROM client_user WHERE client_user_id = $1`,
+            `SELECT invoice_path, first_name, last_name
+             FROM client_user
+             WHERE client_user_id = $1`,
             [userId]
         );
         if (result.rows.length === 0 || !result.rows[0].invoice_path) {
             throw new Error('Invoice not found for this user');
         }
         const storagePath = result.rows[0].invoice_path;
-        const { buffer, contentType } = await storage.downloadFile(storagePath);
+        const {buffer, contentType} = await storage.downloadFile(storagePath);
         return {
             buffer,
             mimeType: contentType || storage.getMimeFromPath(storagePath),
@@ -49,11 +52,9 @@ class AdminService {
         try {
             const query = `
                 SELECT *
-                FROM (
-                         SELECT
-                             client_user_id AS id,
-                             'client' AS user_category,
-                             user_type AS role,        -- Advocate / Magistrate
+                FROM (SELECT client_user_id AS id,
+                             'client'       AS user_category,
+                             user_type      AS role, -- Advocate / Magistrate
                              title,
                              first_name,
                              last_name,
@@ -61,23 +62,21 @@ class AdminService {
                              phone_number,
                              region,
                              created_at
-                         FROM client_user
+                      FROM client_user
 
-                         UNION ALL
+                      UNION ALL
 
-                         SELECT
-                             op_user_id AS id,
+                      SELECT op_user_id    AS id,
                              'operational' AS user_category,
-                             user_role AS role,        -- Admin / MTN_Staff / etc
+                             user_role     AS role, -- Admin / MTN_Staff / etc
                              title,
                              first_name,
                              last_name,
                              email,
-                             NULL AS phone_number,
-                             NULL AS region,
+                             NULL          AS phone_number,
+                             NULL          AS region,
                              created_at
-                         FROM operational_user
-                     ) users
+                      FROM operational_user) users
                 ORDER BY created_at DESC;
 
 
@@ -95,24 +94,23 @@ class AdminService {
     async getAllClientUsers() {
         try {
             const result = await db.query(
-                `SELECT
-                     client_user_id,
-                     title,
-                     first_name,
-                     last_name,
-                     email,
-                     phone_number,
-                     region,
-                     persal_id,
-                     department_id,
-                     user_type,
-                     network_provider,
-                     contract_duration_months,
-                     contract_end_date,
-                     invoice_path,
-                     registration_status,
-                     verification_notes,
-                     created_at
+                `SELECT client_user_id,
+                        title,
+                        first_name,
+                        last_name,
+                        email,
+                        phone_number,
+                        region,
+                        persal_id,
+                        department_id,
+                        user_type,
+                        network_provider,
+                        contract_duration_months,
+                        contract_end_date,
+                        invoice_path,
+                        registration_status,
+                        verification_notes,
+                        created_at
                  FROM client_user
                  ORDER BY created_at DESC`,
                 []
@@ -132,25 +130,24 @@ class AdminService {
     async getClientUserById(userId) {
         try {
             const result = await db.query(
-                `SELECT
-                     client_user_id,
-                     title,
-                     first_name,
-                     last_name,
-                     email,
-                     phone_number,
-                     region,
-                     persal_id,
-                     department_id,
-                     user_type,
-                     network_provider,
-                     contract_duration_months,
-                     contract_end_date,
-                     invoice_path,
-                     registration_status,
-                     verification_notes,
-                     created_at,
-                     updated_at
+                `SELECT client_user_id,
+                        title,
+                        first_name,
+                        last_name,
+                        email,
+                        phone_number,
+                        region,
+                        persal_id,
+                        department_id,
+                        user_type,
+                        network_provider,
+                        contract_duration_months,
+                        contract_end_date,
+                        invoice_path,
+                        registration_status,
+                        verification_notes,
+                        created_at,
+                        updated_at
                  FROM client_user
                  WHERE client_user_id = $1`,
                 [userId]
@@ -176,12 +173,13 @@ class AdminService {
     async getAllOperationalUsers() {
         try {
             const result = await db.query(
-                `SELECT
-                     op_user_id,
-                     first_name,
-                     last_name,
-                     email,
-                     user_role
+                `SELECT op_user_id,
+                        title,
+                        first_name,
+                        last_name,
+                        email,
+                        user_role,
+                        is_super_admin
                  FROM operational_user
                  ORDER BY created_at DESC`,
                 []
@@ -197,12 +195,12 @@ class AdminService {
     async getOperationalUserById(userId) {
         try {
             const result = await db.query(
-                `SELECT
-                     op_user_id,
-                     first_name,
-                     last_name,
-                     email,
-                     user_role
+                `SELECT op_user_id,
+                        first_name,
+                        last_name,
+                        email,
+                        user_role,
+                        is_super_admin
                  FROM operational_user
                  WHERE op_user_id = $1`,
                 [userId]
@@ -217,15 +215,15 @@ class AdminService {
             throw new Error(`Error fetching operational user: ${error.message}`);
         }
     }
+
     async updateUserRegistrationStatus(userId, status, notes) {
         try {
             const result = await db.query(
                 `UPDATE client_user
                  SET registration_status = $1,
-                     verification_notes = $2,
-                     updated_at = CURRENT_TIMESTAMP
-                 WHERE client_user_id = $3
-                     RETURNING 
+                     verification_notes  = $2,
+                     updated_at          = CURRENT_TIMESTAMP
+                 WHERE client_user_id = $3 RETURNING 
                     client_user_id,
                     first_name,
                     last_name,
@@ -250,29 +248,29 @@ class AdminService {
         try {
             // Client user statistics
             const clientStats = await db.query(
-                `SELECT
-                     registration_status,
-                     COUNT(*) as count
+                `SELECT registration_status,
+                        COUNT(*) as count
                  FROM client_user
                  GROUP BY registration_status`
             );
 
             // Operational user statistics
             const operationalStats = await db.query(
-                `SELECT
-                     user_role,
-                     COUNT(*) as count
+                `SELECT user_role,
+                        COUNT(*) as count
                  FROM operational_user
                  GROUP BY user_role`
             );
 
             // Total counts
             const totalClients = await db.query(
-                `SELECT COUNT(*) as total FROM client_user`
+                `SELECT COUNT(*) as total
+                 FROM client_user`
             );
 
             const totalOperational = await db.query(
-                `SELECT COUNT(*) as total FROM operational_user`
+                `SELECT COUNT(*) as total
+                 FROM operational_user`
             );
 
             return {
@@ -295,27 +293,25 @@ class AdminService {
     async getRecentRegistrations() {
         try {
             const result = await db.query(
-                `SELECT
-                     'client' as user_type,
-                     client_user_id as id,
-                     first_name,
-                     last_name,
-                     email,
-                     registration_status,
-                     created_at
+                `SELECT 'client'       as user_type,
+                        client_user_id as id,
+                        first_name,
+                        last_name,
+                        email,
+                        registration_status,
+                        created_at
                  FROM client_user
                  WHERE created_at >= NOW() - INTERVAL '7 days'
 
                  UNION ALL
 
-                SELECT
-                    'operational' as user_type,
-                    op_user_id as id,
-                    first_name,
-                    last_name,
-                    email,
-                    'Verified' as registration_status,
-                    created_at
+                SELECT 'operational' as user_type,
+                       op_user_id    as id,
+                       first_name,
+                       last_name,
+                       email,
+                       'Verified'    as registration_status,
+                       created_at
                 FROM operational_user
                 WHERE created_at >= NOW() - INTERVAL '7 days'
 
@@ -333,39 +329,40 @@ class AdminService {
     async searchUsers(searchTerm) {
         try {
             const result = await db.query(
-                `SELECT
-                     'client' as user_type,
-                     client_user_id as id,
-                     first_name,
-                     last_name,
-                     email,
-                     phone_number,
-                     persal_id,
-                     registration_status,
-                     user_type as client_user_type
+                `SELECT 'client'       as user_type,
+                        client_user_id as id,
+                        first_name,
+                        last_name,
+                        email,
+                        phone_number,
+                        persal_id,
+                        registration_status,
+                        user_type      as client_user_type
                  FROM client_user
-                 WHERE
-                     first_name ILIKE $1 OR
-                     last_name ILIKE $1 OR
-                     email ILIKE $1 OR
+                 WHERE first_name ILIKE $1
+                    OR
+                     last_name ILIKE $1
+                    OR
+                     email ILIKE $1
+                    OR
                      persal_id ILIKE $1
 
                  UNION ALL
 
-                SELECT
-                    'operational' as user_type,
-                    op_user_id as id,
-                    first_name,
-                    last_name,
-                    email,
-                    NULL as phone_number,
-                    NULL as persal_id,
-                    'Verified' as registration_status,
-                    user_role as client_user_type
+                SELECT 'operational' as user_type,
+                       op_user_id    as id,
+                       first_name,
+                       last_name,
+                       email,
+                       NULL          as phone_number,
+                       NULL          as persal_id,
+                       'Verified'    as registration_status,
+                       user_role     as client_user_type
                 FROM operational_user
-                WHERE
-                    first_name ILIKE $1 OR
-                    last_name ILIKE $1 OR
+                WHERE first_name ILIKE $1
+                   OR
+                    last_name ILIKE $1
+                   OR
                     email ILIKE $1
 
                 ORDER BY last_name, first_name
@@ -385,32 +382,28 @@ class AdminService {
             const [applicationsByUser, ordersByUser, activeContracts] = await Promise.all([
                 // Applications per user
                 db.query(`
-                    SELECT
-                        cu.client_user_id,
-                        cu.first_name,
-                        cu.last_name,
-                        COUNT(a.application_id) as application_count
+                    SELECT cu.client_user_id,
+                           cu.first_name,
+                           cu.last_name,
+                           COUNT(a.application_id) as application_count
                     FROM client_user cu
                              LEFT JOIN application a ON cu.client_user_id = a.client_user_id
                     GROUP BY cu.client_user_id
-                    ORDER BY application_count DESC
-                        LIMIT 10
+                    ORDER BY application_count DESC LIMIT 10
                 `),
 
                 // Orders per user
                 db.query(`
-                    SELECT
-                        cu.client_user_id,
-                        cu.first_name,
-                        cu.last_name,
-                        COUNT(o.order_id) as order_count
+                    SELECT cu.client_user_id,
+                           cu.first_name,
+                           cu.last_name,
+                           COUNT(o.order_id) as order_count
                     FROM client_user cu
                              LEFT JOIN application a ON cu.client_user_id = a.client_user_id
                              LEFT JOIN "order" o ON a.application_id = o.application_id
                     WHERE o.order_status = 'Delivered'
                     GROUP BY cu.client_user_id
-                    ORDER BY order_count DESC
-                        LIMIT 10
+                    ORDER BY order_count DESC LIMIT 10
                 `),
 
                 // Active contracts count
@@ -431,6 +424,7 @@ class AdminService {
             throw new Error(`Error fetching activity summary: ${error.message}`);
         }
     }
+
     // Add these methods to your existing AdminService class (before module.exports)
 
 // Enhanced statistics method
@@ -465,14 +459,18 @@ class AdminService {
             const lastMonthClients = await db.query(
                 `SELECT COUNT(*) as count
                  FROM client_user
-                 WHERE created_at >= $1 AND created_at < $2`,
+                 WHERE created_at >= $1
+                   AND created_at
+                     < $2`,
                 [twoMonthsAgo, lastMonth]
             );
 
             const lastMonthOperational = await db.query(
                 `SELECT COUNT(*) as count
                  FROM operational_user
-                 WHERE created_at >= $1 AND created_at < $2`,
+                 WHERE created_at >= $1
+                   AND created_at
+                     < $2`,
                 [twoMonthsAgo, lastMonth]
             );
 
@@ -489,9 +487,8 @@ class AdminService {
 
             // Region statistics
             const regionStats = await db.query(`
-                SELECT
-                    COALESCE(region, 'Not Specified') as region,
-                    COUNT(*) as count
+                SELECT COALESCE(region, 'Not Specified') as region,
+                       COUNT(*) as count
                 FROM client_user
                 GROUP BY region
                 ORDER BY count DESC
@@ -502,8 +499,7 @@ class AdminService {
             sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
             const monthlyTrends = await db.query(`
-                SELECT
-                    TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as month,
+                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as month,
                 EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) as month_num,
                 COUNT(*) as registrations,
                 'client' as user_type
@@ -511,8 +507,7 @@ class AdminService {
                 WHERE created_at >= $1
                 GROUP BY DATE_TRUNC('month', created_at)
                 UNION ALL
-                SELECT
-                    TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as month,
+                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as month,
                 EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) as month_num,
                 COUNT(*) as registrations,
                 'operational' as user_type
@@ -590,7 +585,9 @@ class AdminService {
             const yesterdaysRegistrations = await db.query(`
                         SELECT COUNT(*) as count
                         FROM client_user
-                        WHERE created_at >= $1 AND created_at < $2`,
+                        WHERE created_at >= $1
+                          AND created_at
+                            < $2`,
                 [yesterday, today]
             );
 
@@ -611,7 +608,7 @@ class AdminService {
 
             // Average verification time
             const avgVerificationTime = await db.query(`
-                SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/86400) as avg_days
+                SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400) as avg_days
                 FROM client_user
                 WHERE registration_status = 'Verified'
                   AND updated_at IS NOT NULL
@@ -656,41 +653,38 @@ class AdminService {
                 SELECT COUNT(*) as count
                 FROM sessions
                 WHERE expires_at > NOW() OR true
-            `).catch(() => ({ rows: [{ count: '0' }] }));
+            `).catch(() => ({rows: [{count: '0'}]}));
 
             // API performance (if you have api_logs table)
             const apiPerformance = await db.query(`
-                SELECT
-                    endpoint,
-                    COUNT(*) as request_count,
-                    AVG(response_time) as avg_response_time_ms,
-                    MIN(response_time) as min_response_time_ms,
-                    MAX(response_time) as max_response_time_ms
+                SELECT endpoint,
+                       COUNT(*)           as request_count,
+                       AVG(response_time) as avg_response_time_ms,
+                       MIN(response_time) as min_response_time_ms,
+                       MAX(response_time) as max_response_time_ms
                 FROM api_logs
                 WHERE created_at >= NOW() - INTERVAL '24 hours'
                 GROUP BY endpoint
                 ORDER BY request_count DESC
                     LIMIT 10
-            `).catch(() => ({ rows: [] }));
+            `).catch(() => ({rows: []}));
 
             // Error rates (last 7 days)
             const errorRates = await db.query(`
                 SELECT
-                    DATE(created_at) as date,
-                    COUNT(*) as total_requests,
-                    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
+                    DATE (created_at) as date, COUNT (*) as total_requests, SUM (CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count
                 FROM api_logs
                 WHERE created_at >= NOW() - INTERVAL '7 days'
-                GROUP BY DATE(created_at)
+                GROUP BY DATE (created_at)
                 ORDER BY date DESC
-            `).catch(() => ({ rows: [] }));
+            `).catch(() => ({rows: []}));
 
             // Calculate average error rate
             const errorStats = errorRates.rows.reduce((acc, row) => {
                 acc.totalRequests += parseInt(row.total_requests);
                 acc.errorCount += parseInt(row.error_count);
                 return acc;
-            }, { totalRequests: 0, errorCount: 0 });
+            }, {totalRequests: 0, errorCount: 0});
 
             const avgErrorRate = errorStats.totalRequests > 0 ?
                 ((errorStats.errorCount / errorStats.totalRequests) * 100).toFixed(2) : 0;
@@ -730,38 +724,37 @@ class AdminService {
         try {
             // Get regular documents from document table
             const documentsResult = await db.query(
-                `SELECT
-                     document_id,
-                     document_type,
-                     s3_path,
-                     upload_date,
-                     document_status,
-                     application_id,
-                     false as is_invoice,
-                     -- Add sort_order for consistent ordering
-                     CASE document_type
-                         WHEN 'ID' THEN 1
-                         WHEN 'Payslip' THEN 2
-                         WHEN 'Proof_of_Residence' THEN 3
-                         ELSE 4
-                         END as sort_order
+                `SELECT document_id,
+                        document_type,
+                        s3_path,
+                        upload_date,
+                        document_status,
+                        application_id,
+                        false   as is_invoice,
+                        -- Add sort_order for consistent ordering
+                        CASE document_type
+                            WHEN 'ID' THEN 1
+                            WHEN 'Payslip' THEN 2
+                            WHEN 'Proof_of_Residence' THEN 3
+                            ELSE 4
+                            END as sort_order
                  FROM document
                  WHERE client_user_id = $1
 
                  UNION ALL
 
                  -- Get invoice as a document
-                 SELECT
-                     -1 as document_id,
-                     'Invoice' as document_type,
-                     invoice_path as s3_path,
-                     created_at as upload_date,
-                     'Verified' as document_status,
-                     NULL as application_id,
-                     true as is_invoice,
-                     0 as sort_order  -- Invoices come first
+                 SELECT -1           as document_id,
+                        'Invoice'    as document_type,
+                        invoice_path as s3_path,
+                        created_at   as upload_date,
+                        'Verified'   as document_status,
+                        NULL         as application_id,
+                        true         as is_invoice,
+                        0            as sort_order -- Invoices come first
                  FROM client_user
-                 WHERE client_user_id = $2 AND invoice_path IS NOT NULL
+                 WHERE client_user_id = $2
+                   AND invoice_path IS NOT NULL
 
                  ORDER BY sort_order, upload_date DESC`,
                 [userId, userId]
@@ -772,16 +765,16 @@ class AdminService {
             }
 
             const documents = documentsResult.rows.map(doc => ({
-                document_id:     doc.document_id,
-                document_type:   doc.document_type,
-                is_invoice:      doc.is_invoice,
-                file_name:       path.basename(doc.s3_path),
-                file_exists:     !!doc.s3_path,
-                file_size:       null,
-                upload_date:     doc.upload_date,
+                document_id: doc.document_id,
+                document_type: doc.document_type,
+                is_invoice: doc.is_invoice,
+                file_name: path.basename(doc.s3_path),
+                file_exists: !!doc.s3_path,
+                file_size: null,
+                upload_date: doc.upload_date,
                 document_status: doc.document_status,
-                application_id:  doc.application_id,
-                mime_type:       storage.getMimeFromPath(doc.s3_path),
+                application_id: doc.application_id,
+                mime_type: storage.getMimeFromPath(doc.s3_path),
             }));
 
             return documents;
@@ -802,29 +795,28 @@ class AdminService {
             if (documentId < 0) {
                 // This is an invoice - get from client_user table
                 query = `
-                SELECT 
-                    invoice_path as s3_path,
-                    'Invoice' as document_type,
-                    'Verified' as document_status,
-                    first_name,
-                    last_name
-                FROM client_user 
-                WHERE client_user_id = $1 AND invoice_path IS NOT NULL
-            `;
+                    SELECT invoice_path as s3_path,
+                           'Invoice'    as document_type,
+                           'Verified'   as document_status,
+                           first_name,
+                           last_name
+                    FROM client_user
+                    WHERE client_user_id = $1
+                      AND invoice_path IS NOT NULL
+                `;
                 params = [Math.abs(documentId)]; // Convert back to positive user ID
             } else {
                 // Regular document
                 query = `
-                SELECT 
-                    d.s3_path,
-                    d.document_type,
-                    d.document_status,
-                    cu.first_name,
-                    cu.last_name
-                FROM document d
-                LEFT JOIN client_user cu ON d.client_user_id = cu.client_user_id
-                WHERE d.document_id = $1
-            `;
+                    SELECT d.s3_path,
+                           d.document_type,
+                           d.document_status,
+                           cu.first_name,
+                           cu.last_name
+                    FROM document d
+                             LEFT JOIN client_user cu ON d.client_user_id = cu.client_user_id
+                    WHERE d.document_id = $1
+                `;
                 params = [documentId];
             }
 
@@ -838,16 +830,16 @@ class AdminService {
 
             if (!doc.s3_path) throw new Error('Document file path missing in database');
 
-            const { buffer, contentType } = await storage.downloadFile(doc.s3_path);
+            const {buffer, contentType} = await storage.downloadFile(doc.s3_path);
 
             const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}${path.extname(doc.s3_path)}`
                 .replace(/[^a-zA-Z0-9._-]/g, '_');
 
             return {
                 buffer,
-                fileName:       safeFileName,
-                mimeType:       contentType || storage.getMimeFromPath(doc.s3_path),
-                documentType:   doc.document_type,
+                fileName: safeFileName,
+                mimeType: contentType || storage.getMimeFromPath(doc.s3_path),
+                documentType: doc.document_type,
                 documentStatus: doc.document_status,
             };
         } catch (error) {
@@ -859,12 +851,11 @@ class AdminService {
     async updateDocumentStatus(documentId, status, notes) {
         try {
             const result = await db.query(
-                `UPDATE document 
-             SET document_status = $1,
-                 verification_notes = $2,
-                 verification_date = CURRENT_TIMESTAMP
-             WHERE document_id = $3
-             RETURNING *`,
+                `UPDATE document
+                 SET document_status    = $1,
+                     verification_notes = $2,
+                     verification_date  = CURRENT_TIMESTAMP
+                 WHERE document_id = $3 RETURNING *`,
                 [status, notes, documentId]
             );
 
@@ -905,10 +896,15 @@ class AdminService {
     async getDocumentSignedUrl(documentId) {
         let query, params;
         if (documentId < 0) {
-            query = `SELECT invoice_path AS s3_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`;
+            query = `SELECT invoice_path AS s3_path
+                     FROM client_user
+                     WHERE client_user_id = $1
+                       AND invoice_path IS NOT NULL`;
             params = [Math.abs(documentId)];
         } else {
-            query = `SELECT s3_path FROM document WHERE document_id = $1`;
+            query = `SELECT s3_path
+                     FROM document
+                     WHERE document_id = $1`;
             params = [documentId];
         }
         const result = await db.query(query, params);
@@ -925,7 +921,10 @@ class AdminService {
 
     async getInvoiceSignedUrl(userId) {
         const result = await db.query(
-            `SELECT invoice_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`,
+            `SELECT invoice_path
+             FROM client_user
+             WHERE client_user_id = $1
+               AND invoice_path IS NOT NULL`,
             [userId]
         );
         if (result.rows.length === 0 || !result.rows[0].invoice_path) {
@@ -939,6 +938,205 @@ class AdminService {
         return storage.getSignedUrl(storagePath, 300); // 5-min URL
     }
 
+    // ── CREATE OPERATIONAL USER ──────────────────────────────────────────────────
+    async createOperationalUser(userData) {
+        try {
+            const existing = await db.query(
+                `SELECT op_user_id FROM operational_user WHERE email = $1`,
+                [userData.email.trim().toLowerCase()]
+            );
+            if (existing.rows.length > 0) {
+                throw new Error('An operational user with this email already exists.');
+            }
+
+            const rawPassword = `${userData.first_name.trim().toLowerCase()}${userData.last_name.trim().toLowerCase()}#123`;
+            const hashedPassword = await bcrypt.hash(rawPassword, 12);
+
+            const result = await db.query(
+                `INSERT INTO operational_user (
+                    title, first_name, last_name, email, user_role, password_hash
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                     RETURNING op_user_id, title, first_name, last_name, email, user_role, created_at`,
+                [
+                    userData.title?.trim() || null,                 // $1
+                    userData.first_name.trim(),           // $2
+                    userData.last_name.trim(),            // $3
+                    userData.email.trim().toLowerCase(),  // $4
+                    userData.user_role,                   // $5
+                    hashedPassword,                       // $6
+                ]
+            );
+
+            // ✅ MUST return both — frontend reads default_password from this
+            return {
+                user: result.rows[0],
+                defaultPassword: rawPassword,
+            };
+
+        } catch (error) {
+            if (error.message.includes('already exists') || error.message.includes('duplicate key')) {
+                throw new Error('An operational user with this email already exists.');
+            }
+            throw new Error(`Error creating operational user: ${error.message}`);
+        }
+    }
+
+// ── UPDATE OPERATIONAL USER ──────────────────────────────────────────────────
+    async updateOperationalUser(userId, userData) {
+        try {
+            // Check user exists
+            const existing = await db.query(
+                `SELECT op_user_id
+                 FROM operational_user
+                 WHERE op_user_id = $1`,
+                [userId]
+            );
+            if (existing.rows.length === 0) {
+                throw new Error('Operational user not found.');
+            }
+
+            // Check email not taken by another user
+            if (userData.email) {
+                const emailCheck = await db.query(
+                    `SELECT op_user_id
+                     FROM operational_user
+                     WHERE email = $1
+                       AND op_user_id != $2`,
+                    [userData.email.trim().toLowerCase(), userId]
+                );
+                if (emailCheck.rows.length > 0) {
+                    throw new Error('DUPLICATE_EMAIL');
+                }
+            }
+
+            const result = await db.query(
+                `UPDATE operational_user
+                 SET title = COALESCE($1, title),
+                     first_name = COALESCE($2, first_name),
+                     last_name  = COALESCE($3, last_name),
+                     email      = COALESCE($4, email),
+                     user_role  = COALESCE($5, user_role)
+                 WHERE op_user_id = $6 RETURNING op_user_id, title, first_name, last_name, email, user_role, created_at`,
+                [
+                    userData.title?.trim() || null,
+                    userData.first_name?.trim() || null,
+                    userData.last_name?.trim() || null,
+                    userData.email?.trim().toLowerCase() || null,
+                    userData.user_role || null,
+                    userId,
+                ]
+            );
+
+            return result.rows[0];
+        } catch (error) {
+            if (error.message === 'DUPLICATE_EMAIL' || error.message.includes('duplicate key')) {
+                throw new Error('An operational user with this email already exists.');
+            }
+            throw new Error(`Error updating operational user: ${error.message}`);
+        }
+    }
+
+// ── DELETE OPERATIONAL USER ──────────────────────────────────────────────────
+    async deleteOperationalUser(userId) {
+        try {
+            const result = await db.query(
+                `DELETE
+                 FROM operational_user
+                 WHERE op_user_id = $1 RETURNING op_user_id, first_name, last_name`,
+                [userId]
+            );
+
+            if (result.rows.length === 0) {
+                throw new Error('Operational user not found.');
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            if (error.message.includes('foreign key') || error.message.includes('violates')) {
+                throw new Error('This user cannot be deleted because they are referenced by other records.');
+            }
+            throw new Error(`Error deleting operational user: ${error.message}`);
+        }
+    }
+
+    async changeOperationalUserPassword(userId, currentPassword, newPassword) {
+        try {
+            // Get current hash
+            const result = await db.query(
+                `SELECT password_hash, first_name, last_name 
+             FROM operational_user WHERE op_user_id = $1`,
+                [userId]
+            );
+            if (result.rows.length === 0) {
+                throw new Error('User not found.');
+            }
+
+            const user = result.rows[0];
+
+            // Verify current password
+            const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+            if (!isMatch) {
+                throw new Error('Current password is incorrect.');
+            }
+
+            // Validate new password
+            if (newPassword.length < 8) {
+                throw new Error('New password must be at least 8 characters.');
+            }
+            if (newPassword === currentPassword) {
+                throw new Error('New password must be different from the current password.');
+            }
+
+            const hashedNew = await bcrypt.hash(newPassword, 12);
+
+            await db.query(
+                `UPDATE operational_user 
+             SET password_hash = $1
+             WHERE op_user_id = $2`,
+                [hashedNew, userId]
+            );
+
+            return { success: true };
+        } catch (error) {
+            throw new Error(`Error changing password: ${error.message}`);
+        }
+    }
+
+    async promoteToSuperAdmin(userId) {
+        try {
+            const result = await db.query(
+                `UPDATE operational_user 
+             SET is_super_admin = true 
+             WHERE op_user_id = $1
+             RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
+                [userId]
+            );
+            if (result.rows.length === 0) throw new Error('User not found.');
+            return result.rows[0];
+        } catch (error) {
+            throw new Error(`Error promoting user: ${error.message}`);
+        }
+    }
+
+    async demoteSuperAdmin(userId) {
+        try {
+            const result = await db.query(
+                `UPDATE operational_user 
+             SET is_super_admin = false 
+             WHERE op_user_id = $1
+             RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
+                [userId]
+            );
+            if (result.rows.length === 0) throw new Error('User not found.');
+            return result.rows[0];
+        } catch (error) {
+            throw new Error(`Error demoting user: ${error.message}`);
+        }
+    }
+
+
+
 }
+
 
 module.exports = new AdminService();

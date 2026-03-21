@@ -4,7 +4,7 @@ const router = express.Router();
 const DeviceController = require('../controllers/deviceController');
 
 // Initialize controller
-//const deviceController = new DeviceController();
+const deviceController = new DeviceController();
 
 // Device routes
 router.get('/devices', deviceController.getAllDevices);

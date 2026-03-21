@@ -135,13 +135,17 @@ class DeviceController {
     };
 
     // Get device statistics
+    // Get device statistics
     getDeviceStatistics = async (req, res) => {
         try {
-            const statistics = await this.deviceService.getDeviceStatistics();
-            res.json({
-                success: true,
-                data: statistics
-            });
+            const result = await this.deviceService.getDeviceStatistics();
+
+            // ✅ Fix: service already returns { success, data }, don't wrap again
+            if (!result.success) {
+                return res.status(500).json(result);
+            }
+
+            res.json(result);
         } catch (error) {
             res.status(500).json({
                 success: false,

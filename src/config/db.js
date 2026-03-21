@@ -18,7 +18,7 @@ if (process.env.NODE_ENV === 'production') {
         user: "postgres",
         host: "localhost",
         database: "dojcd_db",
-        password: "Ngangotshani@3",
+        password: "lunga@123",
         port: 5432
     });
 }

@@ -34,4 +34,15 @@ router.patch('/client-users/:id/status', (req, res) => adminController.updateUse
 router.get('/operational-users', (req, res) => adminController.getAllOperationalUsers(req, res));
 router.get('/operational-users/:id', (req, res) => adminController.getOperationalUserById(req, res));
 
+router.post('/operational-users', (req, res) => adminController.createOperationalUser(req, res));
+router.put('/operational-users/:id', (req, res) => adminController.updateOperationalUser(req, res));
+router.delete('/operational-users/:id', (req, res) => adminController.deleteOperationalUser(req, res));
+
+router.patch('/operational-users/:id/change-password',
+    (req, res) => adminController.changeOperationalUserPassword(req, res));
+
+router.patch('/operational-users/:id/promote',  (req, res) => adminController.promoteToSuperAdmin(req, res));
+router.patch('/operational-users/:id/demote',   (req, res) => adminController.demoteSuperAdmin(req, res));
+
+
 module.exports = router;

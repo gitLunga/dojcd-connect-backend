@@ -217,8 +217,8 @@ class DeviceService {
                 `INSERT INTO device_catalog (
                     device_name, model, manufacturer, plan_name,
                     plan_details, monthly_cost, contract_duration_months,
-                    status, created_at, updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                    status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING 
                     device_id, device_name, model, manufacturer,
                     plan_name, plan_details, monthly_cost,
@@ -232,7 +232,7 @@ class DeviceService {
                     deviceData.plan_details?.trim() || null,
                     parseFloat(deviceData.monthly_cost),
                     deviceData.contract_duration_months || null,
-                    deviceData.status || 'active'
+                    deviceData.status || 'Active'
                 ]
             );
 
@@ -346,6 +346,7 @@ class DeviceService {
         } catch (error) {
             await client.query('ROLLBACK');
             console.error('Error updating device:', error);
+
             return {
                 success: false,
                 message: error.message.includes('not found') || error.message.includes('already exists') || error.message.includes('required')

@@ -348,6 +348,8 @@ class AuthService {
         const userResponse = {...user};
         delete userResponse.password_hash;
 
+        userResponse.name = `${user.first_name} ${user.last_name}`.trim();
+
         return userResponse;
     }
 
