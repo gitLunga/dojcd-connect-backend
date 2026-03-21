@@ -45,7 +45,9 @@ CREATE TABLE device_catalog (
     plan_details TEXT,
     monthly_cost NUMERIC(10, 2) NOT NULL,
     contract_duration_months INTEGER NOT NULL,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('Available', 'Discontinued'))
+    status VARCHAR(50) NOT NULL CHECK (status IN ('active', 'inactive', 'discontinued')),
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3. Table: OPERATIONAL_USER
@@ -58,6 +60,8 @@ CREATE TABLE operational_user (
     user_role VARCHAR(50) NOT NULL CHECK (user_role IN ('Admin', 'MTN_Staff', 'Approver')),
     password_hash VARCHAR(255) NOT NULL,
     cognito_id VARCHAR(255) UNIQUE,
+	must_change_password BOOLEAN DEFAULT true,  -- Add this line
+    is_super_admin BOOLEAN DEFAULT false,  -- Add this line
 	
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
