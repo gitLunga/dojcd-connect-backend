@@ -1,6 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const applicationRoutes = require('./routes/Application/applicationRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -8,10 +12,21 @@ const app = express();
 
 // CORS should be here in the main app file
 app.use(cors({
-    origin: "*", // Allow all origins for development
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: ["http://localhost:3000", "https://dojcd-admin-dashboard.vercel.app"],// Allow all origins for development
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true
 }));
+
+const storage = require('./config/supabaseStorage');
+
+// Serve local files in dev (no-op in production since router only used locally)
+app.use('/api/files', storage.localFileRouter);
+
+
+app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB
+app.use(express.urlencoded({extended: true, limit: '50mb'}));
+app.use('/uploads', require('express').static('uploads'));
+
 
 app.use(express.json());
 
@@ -24,6 +39,18 @@ app.get('/api/test', (req, res) => {
     });
 });
 
+//authorization routes
 app.use('/api/auth', authRoutes);
+
+//admin routes
+app.use('/api/admin', adminRoutes);
+
+//application routes
+app.use('/api/applications', applicationRoutes);
+
+app.use('/api/notifications', notificationRoutes);
+
+//device routes
+app.use('/api', deviceRoutes);
 
 module.exports = app;
