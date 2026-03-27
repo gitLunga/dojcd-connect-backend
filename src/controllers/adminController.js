@@ -579,7 +579,7 @@ class AdminController {
                 });
             }
 
-            const validRoles = ['Admin', 'Manager', 'Support'];
+            const validRoles = ['Admin', 'MTN_Staff', 'Approver'];
             if (!validRoles.includes(user_role)) {
                 return res.status(400).json({
                     success: false,
