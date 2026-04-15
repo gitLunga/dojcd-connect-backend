@@ -66,7 +66,7 @@ class ApplicationService {
                        plan_name, plan_details, monthly_cost,
                        contract_duration_months, status
                 FROM device_catalog
-                WHERE status = 'active' OR status = 'Available'
+                WHERE status = 'active'
                 ORDER BY monthly_cost
             `);
             return result.rows;

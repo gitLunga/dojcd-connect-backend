@@ -1,4 +1,5 @@
 const express = require("express");
+const app = express();
 const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
@@ -8,14 +9,15 @@ const deviceRoutes = require('./routes/deviceRoutes');
 
 require("./config/db"); // Initialize DB connection
 
-const app = express();
 
 // CORS should be here in the main app file
 app.use(cors({
-    origin: ["http://localhost:3000", "https://dojcd-admin-dashboard.vercel.app"],// Allow all origins for development
+    origin: "https://admin.malcam.co.za", // Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
+
 
 const storage = require('./config/localStorage');
 
@@ -24,8 +26,19 @@ const storage = require('./config/localStorage');
 app.use('/api/files', storage.localFileRouter);
 app.use('/uploads', express.static('uploads'));
 
-app.use(express.json({limit: '50mb'}));
+// Body Parser
+app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB
 app.use(express.urlencoded({extended: true, limit: '50mb'}));
+
+
+//Static files
+app.use('/uploads', require('express').static('uploads'));
+
+//storage serve local files in dev (no-op in production since router only used locally)
+//const storage = require('./config/supabaseStorage');
+const storage = require('./config/pgStorage');
+app.use('/api/files',storage.localFileRouter);
+
 
 // Add a test endpoint at the root
 app.get('/api/test', (req, res) => {
