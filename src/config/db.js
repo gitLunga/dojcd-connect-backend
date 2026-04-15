@@ -1,40 +1,28 @@
 const { Pool } = require("pg");
 
-let pool;
+//console.log("🔧 Using DATABASE_URL for DB connection");
+console.log("🔧 Using DB connection parameters");
 
-if (process.env.NODE_ENV === 'production') {
-    console.log("🔧 Configuring for PRODUCTION database");
-    pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-    });
-} else {
-    console.log("🔧 Configuring for DEVELOPMENT database");
-    pool = new Pool({
-        user: "postgres",
-        host: "localhost",
-        database: "dojcd_db",
-        password: "lunga@123",
-        port: 5432,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-    });
-}
 
-// ✅ Test connection WITHOUT leaking — must release the client
+const pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT) || 5432,
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME || 'dojcd_new_db',
+    connectionTimeoutMillis: 10000,
+});
+
+console.log("🔧 Using DB connection parameters (host/user/password)");
+
+//const isProduction = process.env.NODE_ENV === "production";
 pool.connect()
     .then(client => {
         console.log("✅ PostgreSQL connected successfully");
-        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        client.release(); // ← this was missing — was permanently consuming 1 slot
+        client.release();
     })
     .catch(err => {
         console.error("❌ Database connection error:", err.message);
-        console.error("🔍 Check your DATABASE_URL or local credentials");
     });
 
 module.exports = pool;

@@ -1,0 +1,5 @@
+[dotenv@17.2.3] injecting env (7) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+🔧 Using DATABASE_URL for DB connection
+📦 Storage mode: SUPABASE
+🚀 Server running on port 5000
+✅ PostgreSQL connected successfully
