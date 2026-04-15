@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const path = require('path');
-const storage = require('../config/supabaseStorage');
+const storage = require('../config/localStorage');
 const bcrypt = require('bcrypt');
 
 

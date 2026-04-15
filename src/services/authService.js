@@ -2,7 +2,7 @@ const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const ClientUser = require('../models/ClientUser');
 const OperationalUser = require('../models/OperationalUser');
-const storage = require('../config/supabaseStorage'); // ← Supabase Storage (replaces local disk)
+const storage = require('../config/localStorage'); // ← local Storage (replaces local disk)
 
 class AuthService {
 
@@ -158,11 +158,11 @@ class AuthService {
             throw new Error('All profile fields are required');
         }
 
-        const uploadedPaths = []; // Track uploads so we can clean up if DB write fails
+        const uploadedPaths = [];
 
         await db.query('BEGIN');
         try {
-            // 1. Upload invoice to Supabase Storage
+            // 1. Upload invoice
             let invoicePath = null;
             if (files.invoice_file) {
                 const invoiceFile = Array.isArray(files.invoice_file) ? files.invoice_file[0] : files.invoice_file;
@@ -173,7 +173,7 @@ class AuthService {
                 uploadedPaths.push(invoicePath);
             }
 
-            // 2. Update user profile row
+            // 2. Update user profile
             const userResult = await db.query(
                 `UPDATE client_user
                  SET network_provider         = $1,
@@ -186,9 +186,8 @@ class AuthService {
                 [network_provider, contract_duration_months, contract_end_date, invoicePath, clientUserId]
             );
 
-            // 3. Upload and record each document
+            // 3. Upload and record documents
             const savedDocuments = [];
-
             const docDefs = [
                 {key: 'id_document', type: 'ID', prefix: 'id'},
                 {key: 'payslip_document', type: 'Payslip', prefix: 'payslip'},
@@ -224,10 +223,8 @@ class AuthService {
 
         } catch (error) {
             await db.query('ROLLBACK');
-            // Best-effort: remove any files already uploaded so storage stays clean
             for (const p of uploadedPaths) {
-                await storage.deleteFile(p).catch(() => {
-                });
+                await storage.deleteFile(p).catch(() => {});
             }
             console.error('Profile completion error:', error);
             throw error;

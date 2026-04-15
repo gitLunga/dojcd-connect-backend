@@ -17,18 +17,15 @@ app.use(cors({
     credentials: true
 }));
 
-const storage = require('./config/supabaseStorage');
+const storage = require('./config/localStorage');
 
 // Serve local files in dev (no-op in production since router only used locally)
+
 app.use('/api/files', storage.localFileRouter);
+app.use('/uploads', express.static('uploads'));
 
-
-app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB
+app.use(express.json({limit: '50mb'}));
 app.use(express.urlencoded({extended: true, limit: '50mb'}));
-app.use('/uploads', require('express').static('uploads'));
-
-
-app.use(express.json());
 
 // Add a test endpoint at the root
 app.get('/api/test', (req, res) => {

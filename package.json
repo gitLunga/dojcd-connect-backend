@@ -5,8 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node server.js && node scripts/init-folders.js",
+    "dev": "nodemon server.js && node scripts/init-folders.js",
     "build": "npm install"
   },
   "keywords": [],

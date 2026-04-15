@@ -66,7 +66,7 @@ class ApplicationService {
                        plan_name, plan_details, monthly_cost,
                        contract_duration_months, status
                 FROM device_catalog
-                WHERE status = 'Available'
+                WHERE status = 'active' OR status = 'Available'
                 ORDER BY monthly_cost
             `);
             return result.rows;
@@ -78,7 +78,7 @@ class ApplicationService {
     async getDeviceById(deviceId) {
         try {
             const result = await db.query(
-                `SELECT * FROM device_catalog WHERE device_id = $1 AND status = 'Available'`,
+                `SELECT * FROM device_catalog WHERE device_id = $1 AND status = 'active'`,
                 [deviceId]
             );
 
