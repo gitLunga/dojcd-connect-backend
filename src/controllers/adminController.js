@@ -71,12 +71,12 @@ class AdminController {
     async downloadInvoice(req, res) {
         try {
             const {id} = req.params;
-            const signedUrl = await adminService.getInvoiceSignedUrl(parseInt(id));
+            const url = await adminService.getInvoiceSignedUrl(parseInt(id));
             const meta = await adminService.getClientInvoice(parseInt(id));
             res.status(200).json({
                 success: true,
                 message: 'Download URL generated',
-                url: signedUrl,
+                url: url,  // ← Just the /api/files/... URL
                 fileName: meta.fileName,
                 mimeType: meta.mimeType,
             });
@@ -85,7 +85,6 @@ class AdminController {
                 success: false,
                 message: error.message,
                 data: null,
-                timestamp: new Date().toISOString()
             });
         }
     }
@@ -94,20 +93,18 @@ class AdminController {
     async viewInvoice(req, res) {
         try {
             const {id} = req.params;
-            const signedUrl = await adminService.getInvoiceSignedUrl(parseInt(id));
+            const url = await adminService.getInvoiceSignedUrl(parseInt(id));
             const meta = await adminService.getClientInvoice(parseInt(id));
             res.status(200).json({
                 success: true,
                 message: 'Invoice URL generated',
-                url: signedUrl,
+                url: url,  // ← Just the /api/files/... URL
                 fileName: meta.fileName,
                 mimeType: meta.mimeType,
             });
         } catch (error) {
-            const isLegacy = error.message.includes('before cloud storage');
-            res.status(isLegacy ? 410 : 404).json({
+            res.status(404).json({
                 success: false,
-                legacy: isLegacy,
                 message: error.message,
                 data: null,
             });
@@ -464,12 +461,12 @@ class AdminController {
         try {
             const {id} = req.params;
             const docId = parseInt(id);
-            const signedUrl = await adminService.getDocumentSignedUrl(docId);
+            const url = await adminService.getDocumentSignedUrl(docId);
             const docInfo = await adminService.downloadUserDocument(docId);
             res.status(200).json({
                 success: true,
                 message: 'Download URL generated',
-                url: signedUrl,
+                url: url,  // ← Just the /api/files/... URL
                 fileName: docInfo.fileName,
                 mimeType: docInfo.mimeType,
             });
@@ -488,20 +485,18 @@ class AdminController {
         try {
             const {id} = req.params;
             const docId = parseInt(id);
-            const signedUrl = await adminService.getDocumentSignedUrl(docId);
+            const url = await adminService.getDocumentSignedUrl(docId);
             const docInfo = await adminService.viewUserDocument(docId);
             res.status(200).json({
                 success: true,
                 message: 'Document URL generated',
-                url: signedUrl,
+                url: url,  // ← Just the /api/files/... URL
                 fileName: docInfo.fileName,
                 mimeType: docInfo.mimeType,
             });
         } catch (error) {
-            const isLegacy = error.message.includes('before cloud storage');
-            res.status(isLegacy ? 410 : 404).json({
+            res.status(404).json({
                 success: false,
-                legacy: isLegacy,
                 message: error.message,
                 data: null,
             });

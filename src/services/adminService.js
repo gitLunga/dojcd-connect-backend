@@ -916,6 +916,7 @@ class AdminService {
     }
 
     // Returns a short-lived signed Supabase URL for direct browser viewing
+    // ✅ SIMPLIFIED: No more Supabase logic — just return /api/files URLs
     async getDocumentSignedUrl(documentId) {
         let query, params;
         if (documentId < 0) {
@@ -930,16 +931,22 @@ class AdminService {
                      WHERE document_id = $1`;
             params = [documentId];
         }
+
         const result = await db.query(query, params);
         if (result.rows.length === 0 || !result.rows[0].s3_path) {
             throw new Error('Document not found');
         }
+
         const rawPath = result.rows[0].s3_path;
-        if (this._isLegacyDiskPath(rawPath)) {
-            throw new Error('This document was uploaded before cloud storage was enabled and is no longer accessible. Please ask the user to re-upload.');
-        }
+        console.log(`📄 Document path from DB: ${rawPath}`);
+
+        // ✅ Just normalize the path and encode it for URL
         const storagePath = this._normaliseStoragePath(rawPath);
-        return storage.getSignedUrl(storagePath, 300); // 5-min URL
+        const encoded = encodeURIComponent(storagePath);
+        const url = `/api/files/${encoded}`;
+
+        console.log(`✅ Document URL: ${url}`);
+        return url;
     }
 
     async getInvoiceSignedUrl(userId) {
@@ -950,15 +957,31 @@ class AdminService {
                AND invoice_path IS NOT NULL`,
             [userId]
         );
+
         if (result.rows.length === 0 || !result.rows[0].invoice_path) {
             throw new Error('Invoice not found for this user');
         }
+
         const rawPath = result.rows[0].invoice_path;
-        if (this._isLegacyDiskPath(rawPath)) {
-            throw new Error('This invoice was uploaded before cloud storage was enabled and is no longer accessible. Please ask the user to re-upload.');
-        }
+        console.log(`📄 Invoice path from DB: ${rawPath}`);
+
+        // ✅ Just normalize the path and encode it for URL
         const storagePath = this._normaliseStoragePath(rawPath);
-        return storage.getSignedUrl(storagePath, 300); // 5-min URL
+        const encoded = encodeURIComponent(storagePath);
+        const url = `/api/files/${encoded}`;
+
+        console.log(`✅ Invoice URL: ${url}`);
+        return url;
+    }
+
+// ✅ SIMPLIFIED: Remove Supabase legacy check — not needed for local storage
+    _normaliseStoragePath(rawPath) {
+        if (!rawPath) return null;
+        // Strip leading slash (e.g., "/invoices/file.pdf" → "invoices/file.pdf")
+        let p = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+        // Strip legacy 'uploads/' prefix if it exists (e.g., "uploads/invoices/file.pdf" → "invoices/file.pdf")
+        if (p.startsWith('uploads/')) p = p.slice('uploads/'.length);
+        return p;
     }
 
     // ── CREATE OPERATIONAL USER ──────────────────────────────────────────────────
