@@ -71,7 +71,7 @@ class ApplicationService {
             `);
             return result.rows;
         } catch (error) {
-            throw new Error(friendlyError(error, 'fetching available devices'));
+            throw new Error(friendlyError(error, 'fetching active devices'));
         }
     }
 
@@ -83,12 +83,12 @@ class ApplicationService {
             );
 
             if (result.rows.length === 0) {
-                throw new Error('The selected device is no longer available. Please choose a different device.');
+                throw new Error('The selected device is no longer active. Please choose a different device.');
             }
 
             return result.rows[0];
         } catch (error) {
-            if (error.message.includes('no longer available')) throw error;
+            if (error.message.includes('no longer active')) throw error;
             throw new Error(friendlyError(error, 'fetching device details'));
         }
     }
