@@ -974,15 +974,6 @@ class AdminService {
         return url;
     }
 
-// ✅ SIMPLIFIED: Remove Supabase legacy check — not needed for local storage
-    _normaliseStoragePath(rawPath) {
-        if (!rawPath) return null;
-        // Strip leading slash (e.g., "/invoices/file.pdf" → "invoices/file.pdf")
-        let p = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
-        // Strip legacy 'uploads/' prefix if it exists (e.g., "uploads/invoices/file.pdf" → "invoices/file.pdf")
-        if (p.startsWith('uploads/')) p = p.slice('uploads/'.length);
-        return p;
-    }
 
     // ── CREATE OPERATIONAL USER ──────────────────────────────────────────────────
     async createOperationalUser(userData) {
