@@ -1,5 +1,5 @@
 // test-download.js (run once, then delete)
-const adminService = require('./services/adminService');
+const adminService = require('./adminService');
 
 (async () => {
     try {
