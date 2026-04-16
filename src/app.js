@@ -26,9 +26,11 @@ allowedHeaders: ["Content-Type", "Authorization"],
 const storage = require('./config/localStorage');
 
 // Serve local files in dev (no-op in production since router only used locally)
+const uploadsDir = path.join(__dirname, 'uploads');
+console.log(`📁 Serving static files from: ${uploadsDir}`);
 
 app.use('/api/files', storage.localFileRouter);
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(uploadsDir));
 
 // Body Parser
 app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB
