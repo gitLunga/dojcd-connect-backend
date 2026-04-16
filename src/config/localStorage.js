@@ -57,10 +57,10 @@ const express = require('express');
 const localFileRouter = express.Router();
 
 // ✅ FIXED: Use regex pattern to capture entire path including encoded slashes
-localFileRouter.get('/:encodedPath(.*)', (req, res) => {
+localFileRouter.get(/\/(.*)/, (req, res) => {
     try {
         // Get the encoded path from route parameter
-        const encodedPath = req.params.encodedPath;
+        const encodedPath = req.params[0];
 
         console.log(`\n📥 [/api/files] Request received`);
         console.log(`   Encoded path: ${encodedPath}`);
