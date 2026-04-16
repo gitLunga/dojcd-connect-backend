@@ -36,7 +36,7 @@ app.use(express.urlencoded({extended: true, limit: '50mb'}));
 
 
 //Static files
-app.use('/uploads', require('express').static('uploads'));
+//app.use('/uploads', require('express').static('uploads'));
 
 //storage serve local files in dev (no-op in production since router only used locally)
 //const storage = require('./config/supabaseStorage');
