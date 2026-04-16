@@ -36,9 +36,6 @@ app.use('/uploads', require('express').static('uploads'));
 
 //storage serve local files in dev (no-op in production since router only used locally)
 //const storage = require('./config/supabaseStorage');
-
-
-
 // Add a test endpoint at the root
 app.get('/api/test', (req, res) => {
     res.status(200).json({
