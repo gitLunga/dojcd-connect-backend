@@ -920,15 +920,10 @@ class AdminService {
     async getDocumentSignedUrl(documentId) {
         let query, params;
         if (documentId < 0) {
-            query = `SELECT invoice_path AS s3_path
-                     FROM client_user
-                     WHERE client_user_id = $1
-                       AND invoice_path IS NOT NULL`;
+            query = `SELECT invoice_path AS s3_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`;
             params = [Math.abs(documentId)];
         } else {
-            query = `SELECT s3_path
-                     FROM document
-                     WHERE document_id = $1`;
+            query = `SELECT s3_path FROM document WHERE document_id = $1`;
             params = [documentId];
         }
 
@@ -940,10 +935,9 @@ class AdminService {
         const rawPath = result.rows[0].s3_path;
         console.log(`📄 Document path from DB: ${rawPath}`);
 
-        // ✅ Just normalize the path and encode it for URL
+        // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/
         const storagePath = this._normaliseStoragePath(rawPath);
-        const encoded = encodeURIComponent(storagePath);
-        const url = `/api/files/${encoded}`;
+        const url = `/uploads/${storagePath}`;
 
         console.log(`✅ Document URL: ${url}`);
         return url;
@@ -951,10 +945,7 @@ class AdminService {
 
     async getInvoiceSignedUrl(userId) {
         const result = await db.query(
-            `SELECT invoice_path
-             FROM client_user
-             WHERE client_user_id = $1
-               AND invoice_path IS NOT NULL`,
+            `SELECT invoice_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`,
             [userId]
         );
 
@@ -965,10 +956,9 @@ class AdminService {
         const rawPath = result.rows[0].invoice_path;
         console.log(`📄 Invoice path from DB: ${rawPath}`);
 
-        // ✅ Just normalize the path and encode it for URL
+        // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/
         const storagePath = this._normaliseStoragePath(rawPath);
-        const encoded = encodeURIComponent(storagePath);
-        const url = `/api/files/${encoded}`;
+        const url = `/uploads/${storagePath}`;
 
         console.log(`✅ Invoice URL: ${url}`);
         return url;
