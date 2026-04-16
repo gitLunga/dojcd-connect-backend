@@ -70,7 +70,10 @@ localFileRouter.get(/\/(.*)/, (req, res) => {
         console.log(`   Decoded path: ${storagePath}`);
 
         // Resolve to absolute path
-        const absPath = resolveLocalPath(storagePath);
+        const absPath = path.join(
+            path.join(__dirname, '..', 'uploads'),
+            storagePath
+        );
         console.log(`   Absolute path: ${absPath}`);
 
         // Check if file exists
