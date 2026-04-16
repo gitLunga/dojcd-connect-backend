@@ -18,7 +18,7 @@ app.use(cors({
     ],
     // Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
 
@@ -35,8 +35,8 @@ app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB
 app.use(express.urlencoded({extended: true, limit: '50mb'}));
 
 
-// //Static files
-// app.use('/uploads', require('express').static('uploads'));
+//Static files
+app.use('/uploads', require('express').static('uploads'));
 
 //storage serve local files in dev (no-op in production since router only used locally)
 //const storage = require('./config/supabaseStorage');
