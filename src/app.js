@@ -11,11 +11,27 @@ require("./config/db"); // Initialize DB connection
 
 
 // CORS should be here in the main app file
-app.use(cors({
+/*app.use(cors({
     origin: "https://admin.malcam.co.za", // Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
+}));*/
+
+const allowedOrigins = [
+  "https://admin.malcam.co.za",
+  "https://client.malcam.co.za"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
 }));
 
 
