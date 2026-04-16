@@ -958,8 +958,7 @@ class AdminService {
 
         // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/
         const storagePath = this._normaliseStoragePath(rawPath);
-        const url = `/uploads/${storagePath}`;
-
+        const url = `https://api.malcam.co.za/uploads/${storagePath}`;  //
         console.log(`✅ Invoice URL: ${url}`);
         return url;
     }
