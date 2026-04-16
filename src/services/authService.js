@@ -151,68 +151,137 @@ class AuthService {
     // }
 
     // ── completeProfile — uploads all files to Supabase Storage ────────────
+    // authService.js - FIXED completeProfile
+
     async completeProfile(clientUserId, profileData, files) {
-        const {network_provider, contract_duration_months, contract_end_date} = profileData;
+        const { network_provider, contract_duration_months, contract_end_date } = profileData;
 
         if (!network_provider || !contract_duration_months || !contract_end_date) {
             throw new Error('All profile fields are required');
         }
 
+        console.log(`\n🔄 Starting profile completion for user ${clientUserId}`);
+
         const uploadedPaths = [];
 
-        await db.query('BEGIN');
         try {
-            // 1. Upload invoice
+            // ✅ START TRANSACTION
+            console.log('📊 Starting database transaction...');
+            await db.query('BEGIN');
+
+            // ✅ 1. Upload invoice
+            console.log('📄 Processing invoice file...');
             let invoicePath = null;
             if (files.invoice_file) {
-                const invoiceFile = Array.isArray(files.invoice_file) ? files.invoice_file[0] : files.invoice_file;
-                invoicePath = await storage.uploadFile(
-                    invoiceFile.buffer, invoiceFile.mimetype,
-                    'invoices', 'invoice', clientUserId
-                );
-                uploadedPaths.push(invoicePath);
+                const invoiceFile = Array.isArray(files.invoice_file)
+                    ? files.invoice_file[0]
+                    : files.invoice_file;
+
+                try {
+                    invoicePath = await storage.uploadFile(
+                        invoiceFile.buffer,
+                        invoiceFile.mimetype,
+                        'invoices',
+                        'invoice',
+                        clientUserId
+                    );
+                    uploadedPaths.push(invoicePath);
+                    console.log(`✅ Invoice uploaded: ${invoicePath}`);
+                } catch (err) {
+                    throw new Error(`Failed to upload invoice: ${err.message}`);
+                }
             }
 
-            // 2. Update user profile
-            const userResult = await db.query(
-                `UPDATE client_user
+            // ✅ 2. Update user profile
+            console.log('👤 Updating user profile...');
+            let userResult;
+            try {
+                userResult = await db.query(
+                    `UPDATE client_user
                  SET network_provider         = $1,
                      contract_duration_months = $2,
                      contract_end_date        = $3,
                      invoice_path             = $4,
                      registration_status      = 'Profile_Completed',
                      updated_at               = CURRENT_TIMESTAMP
-                 WHERE client_user_id = $5 RETURNING *`,
-                [network_provider, contract_duration_months, contract_end_date, invoicePath, clientUserId]
-            );
+                 WHERE client_user_id = $5 
+                 RETURNING *`,
+                    [network_provider, contract_duration_months, contract_end_date, invoicePath, clientUserId]
+                );
 
-            // 3. Upload and record documents
+                if (userResult.rows.length === 0) {
+                    throw new Error(`User ${clientUserId} not found`);
+                }
+
+                console.log(`✅ User profile updated for user ${clientUserId}`);
+            } catch (err) {
+                throw new Error(`Failed to update user profile: ${err.message}`);
+            }
+
+            // ✅ 3. Upload and record documents
+            console.log('📋 Processing documents...');
             const savedDocuments = [];
             const docDefs = [
-                {key: 'id_document', type: 'ID', prefix: 'id'},
-                {key: 'payslip_document', type: 'Payslip', prefix: 'payslip'},
-                {key: 'residence_document', type: 'Proof_of_Residence', prefix: 'residence'},
+                { key: 'id_document', type: 'ID', prefix: 'id', required: true },
+                { key: 'payslip_document', type: 'Payslip', prefix: 'payslip', required: true },
+                { key: 'residence_document', type: 'Proof_of_Residence', prefix: 'residence', required: false },
             ];
 
             for (const def of docDefs) {
-                if (!files[def.key]) continue;
+                // ✅ VALIDATE required documents
+                if (!files[def.key]) {
+                    if (def.required) {
+                        throw new Error(`${def.key} is required`);
+                    }
+                    console.log(`⏭️  Skipping ${def.key} (not provided)`);
+                    continue;
+                }
 
-                const file = Array.isArray(files[def.key]) ? files[def.key][0] : files[def.key];
-                const savedPath = await storage.uploadFile(
-                    file.buffer, file.mimetype,
-                    'documents', def.prefix, clientUserId
-                );
-                uploadedPaths.push(savedPath);
+                try {
+                    const file = Array.isArray(files[def.key])
+                        ? files[def.key][0]
+                        : files[def.key];
 
-                const docResult = await db.query(
-                    `INSERT INTO document (client_user_id, document_type, s3_path, document_status)
-                     VALUES ($1, $2, $3, 'Pending') RETURNING document_id, document_type, s3_path`,
-                    [clientUserId, def.type, savedPath]
-                );
-                savedDocuments.push(docResult.rows[0]);
+                    // ✅ UPLOAD FILE TO DISK
+                    console.log(`   📁 Uploading ${def.type}...`);
+                    const savedPath = await storage.uploadFile(
+                        file.buffer,
+                        file.mimetype,
+                        'documents',
+                        def.prefix,
+                        clientUserId
+                    );
+                    uploadedPaths.push(savedPath);
+                    console.log(`   ✅ File uploaded: ${savedPath}`);
+
+                    // ✅ INSERT INTO DATABASE
+                    console.log(`   💾 Inserting ${def.type} record into database...`);
+                    const docResult = await db.query(
+                        `INSERT INTO document 
+                     (client_user_id, document_type, s3_path, document_status, upload_date)
+                     VALUES ($1, $2, $3, 'Pending', CURRENT_TIMESTAMP) 
+                     RETURNING document_id, document_type, s3_path, upload_date`,
+                        [clientUserId, def.type, savedPath]
+                    );
+
+                    if (docResult.rows.length === 0) {
+                        throw new Error(`Failed to insert ${def.type} record`);
+                    }
+
+                    const docRecord = docResult.rows[0];
+                    savedDocuments.push(docRecord);
+                    console.log(`   ✅ ${def.type} record inserted (ID: ${docRecord.document_id})`);
+
+                } catch (err) {
+                    console.error(`❌ Error processing ${def.type}:`, err.message);
+                    throw new Error(`Failed to process ${def.type}: ${err.message}`);
+                }
             }
 
+            // ✅ COMMIT TRANSACTION
+            console.log('✅ Committing transaction...');
             await db.query('COMMIT');
+            console.log(`✅ Profile completed successfully for user ${clientUserId}\n`);
 
             return {
                 success: true,
@@ -222,11 +291,29 @@ class AuthService {
             };
 
         } catch (error) {
-            await db.query('ROLLBACK');
-            for (const p of uploadedPaths) {
-                await storage.deleteFile(p).catch(() => {});
+            // ✅ ROLLBACK ON ANY ERROR
+            console.error(`❌ Error in completeProfile: ${error.message}`);
+            console.log('🔄 Rolling back transaction...');
+
+            try {
+                await db.query('ROLLBACK');
+                console.log('✅ Transaction rolled back');
+            } catch (rollbackErr) {
+                console.error('❌ Rollback failed:', rollbackErr.message);
             }
-            console.error('Profile completion error:', error);
+
+            // ✅ CLEANUP UPLOADED FILES
+            console.log(`🗑️  Cleaning up ${uploadedPaths.length} uploaded file(s)...`);
+            for (const p of uploadedPaths) {
+                try {
+                    await storage.deleteFile(p);
+                    console.log(`   ✅ Deleted: ${p}`);
+                } catch (delErr) {
+                    console.warn(`   ⚠️  Could not delete ${p}: ${delErr.message}`);
+                }
+            }
+
+            console.error(`\n`);
             throw error;
         }
     }
