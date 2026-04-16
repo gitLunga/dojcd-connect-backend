@@ -71,15 +71,19 @@ class AdminController {
     async downloadInvoice(req, res) {
         try {
             const {id} = req.params;
-            const url = await adminService.getInvoiceSignedUrl(parseInt(id));
-            const meta = await adminService.getClientInvoice(parseInt(id));
-            res.status(200).json({
-                success: true,
-                message: 'Download URL generated',
-                url: url,  // ← Just the /api/files/... URL
-                fileName: meta.fileName,
-                mimeType: meta.mimeType,
-            });
+            const invoiceInfo = await adminService.getClientInvoice(parseInt(id));
+
+            // ✅ NO caching headers
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
+            // ✅ Return the file directly
+            res.setHeader('Content-Disposition', `attachment; filename="${invoiceInfo.fileName}"`);
+            res.setHeader('Content-Type', invoiceInfo.mimeType);
+            res.setHeader('Content-Length', invoiceInfo.buffer.length);
+
+            return res.end(invoiceInfo.buffer);
         } catch (error) {
             res.status(404).json({
                 success: false,
@@ -89,19 +93,23 @@ class AdminController {
         }
     }
 
-    // NEW METHOD: View invoice (inline in browser)
+// ── REPLACE: viewInvoice (inline in browser) ──
     async viewInvoice(req, res) {
         try {
             const {id} = req.params;
-            const url = await adminService.getInvoiceSignedUrl(parseInt(id));
-            const meta = await adminService.getClientInvoice(parseInt(id));
-            res.status(200).json({
-                success: true,
-                message: 'Invoice URL generated',
-                url: url,  // ← Just the /api/files/... URL
-                fileName: meta.fileName,
-                mimeType: meta.mimeType,
-            });
+            const invoiceInfo = await adminService.getClientInvoice(parseInt(id));
+
+            // ✅ NO caching headers
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
+            // ✅ Return the file directly (inline, not attachment)
+            res.setHeader('Content-Disposition', `inline; filename="${invoiceInfo.fileName}"`);
+            res.setHeader('Content-Type', invoiceInfo.mimeType);
+            res.setHeader('Content-Length', invoiceInfo.buffer.length);
+
+            return res.end(invoiceInfo.buffer);
         } catch (error) {
             res.status(404).json({
                 success: false,
@@ -456,44 +464,51 @@ class AdminController {
         }
     }
 
-// Download ANY document
+// ── REPLACE: downloadDocument ──
     async downloadDocument(req, res) {
         try {
             const {id} = req.params;
             const docId = parseInt(id);
-            const url = await adminService.getDocumentSignedUrl(docId);
             const docInfo = await adminService.downloadUserDocument(docId);
-            res.status(200).json({
-                success: true,
-                message: 'Download URL generated',
-                url: url,  // ← Just the /api/files/... URL
-                fileName: docInfo.fileName,
-                mimeType: docInfo.mimeType,
-            });
+
+            // ✅ NO caching headers
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
+            // ✅ Return the file directly
+            res.setHeader('Content-Disposition', `attachment; filename="${docInfo.fileName}"`);
+            res.setHeader('Content-Type', docInfo.mimeType);
+            res.setHeader('Content-Length', docInfo.buffer.length);
+
+            return res.end(docInfo.buffer);
         } catch (error) {
             res.status(404).json({
                 success: false,
                 message: error.message,
                 data: null,
-                timestamp: new Date().toISOString()
             });
         }
     }
 
-// View ANY document inline
+// ── REPLACE: viewDocument ──
     async viewDocument(req, res) {
         try {
             const {id} = req.params;
             const docId = parseInt(id);
-            const url = await adminService.getDocumentSignedUrl(docId);
             const docInfo = await adminService.viewUserDocument(docId);
-            res.status(200).json({
-                success: true,
-                message: 'Document URL generated',
-                url: url,  // ← Just the /api/files/... URL
-                fileName: docInfo.fileName,
-                mimeType: docInfo.mimeType,
-            });
+
+            // ✅ NO caching headers
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
+            // ✅ Return the file directly (inline, not attachment)
+            res.setHeader('Content-Disposition', `inline; filename="${docInfo.fileName}"`);
+            res.setHeader('Content-Type', docInfo.mimeType);
+            res.setHeader('Content-Length', docInfo.buffer.length);
+
+            return res.end(docInfo.buffer);
         } catch (error) {
             res.status(404).json({
                 success: false,
