@@ -36,7 +36,7 @@ async function downloadFile(storagePath) {
     };
 }
 
-// ── getSignedUrl ───────────────────────���──────────────────────────────────────
+// ── getSignedUrl ───────────────────────────────────────────────────────────────
 async function getSignedUrl(storagePath) {
     const encoded = encodeURIComponent(storagePath);
     return `/api/files/${encoded}`;
@@ -56,16 +56,11 @@ async function deleteFile(storagePath) {
 const express = require('express');
 const localFileRouter = express.Router();
 
-// ✅ FIX: Use .get('*', ...) to capture the ENTIRE encoded path including %2F
-localFileRouter.get('*', (req, res) => {
+// ✅ FIXED: Use regex pattern to capture entire path including encoded slashes
+localFileRouter.get('/:encodedPath(.*)', (req, res) => {
     try {
-        // Get the full path after /api/files/
-        let encodedPath = req.path;
-
-        // Remove leading slash if present
-        if (encodedPath.startsWith('/')) {
-            encodedPath = encodedPath.slice(1);
-        }
+        // Get the encoded path from route parameter
+        const encodedPath = req.params.encodedPath;
 
         console.log(`\n📥 [/api/files] Request received`);
         console.log(`   Encoded path: ${encodedPath}`);
@@ -134,8 +129,12 @@ function resolveLocalPath(storagePath) {
 
 function getExtFromMime(mimeType) {
     const map = {
-        'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/jpg': '.jpg',
-        'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
+        'application/pdf': '.pdf',
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
         'application/msword': '.doc',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
     };
@@ -145,8 +144,12 @@ function getExtFromMime(mimeType) {
 function getMimeFromPath(filePath) {
     const ext = (filePath || '').split('.').pop().toLowerCase();
     const map = {
-        'pdf': 'application/pdf', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-        'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp',
+        'pdf': 'application/pdf',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
         'doc': 'application/msword',
         'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
