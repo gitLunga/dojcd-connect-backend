@@ -442,23 +442,23 @@ class AdminService {
             const lastMonthClients       = await db.query(`SELECT COUNT(*) AS count FROM client_user      WHERE created_at >= $1 AND created_at < $2`, [twoMonthsAgo, lastMonth]);
             const lastMonthOperational   = await db.query(`SELECT COUNT(*) AS count FROM operational_user WHERE created_at >= $1 AND created_at < $2`, [twoMonthsAgo, lastMonth]);
             const regionStats            = await db.query(`
-            SELECT COALESCE(region, 'Not Specified') AS region, COUNT(*) AS count
-            FROM client_user GROUP BY region ORDER BY count DESC
-        `);
+                SELECT COALESCE(region, 'Not Specified') AS region, COUNT(*) AS count
+                FROM client_user GROUP BY region ORDER BY count DESC
+            `);
             const monthlyTrends          = await db.query(`
-            SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
+                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
                    EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
                    COUNT(*) AS registrations, 'client' AS user_type
-            FROM client_user WHERE created_at >= $1
-            GROUP BY DATE_TRUNC('month', created_at)
-            UNION ALL
-            SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
+                FROM client_user WHERE created_at >= $1
+                GROUP BY DATE_TRUNC('month', created_at)
+                UNION ALL
+                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
                    EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
                    COUNT(*) AS registrations, 'operational' AS user_type
-            FROM operational_user WHERE created_at >= $1
-            GROUP BY DATE_TRUNC('month', created_at)
-            ORDER BY month_num
-        `, [sixMonthsAgo]);
+                FROM operational_user WHERE created_at >= $1
+                GROUP BY DATE_TRUNC('month', created_at)
+                ORDER BY month_num
+            `, [sixMonthsAgo]);
 
             const currentClients      = parseInt(newClientsThisMonth.rows[0]?.count      || 0);
             const previousClients     = parseInt(lastMonthClients.rows[0]?.count         || 0);
@@ -500,19 +500,19 @@ class AdminService {
                 const appByStatus     = await db.query(`SELECT application_status AS status, COUNT(*) AS count FROM application GROUP BY application_status ORDER BY count DESC`);
                 const totalApps       = await db.query(`SELECT COUNT(*) AS total FROM application`);
                 const activeContracts = await db.query(`
-                SELECT COUNT(*) AS active_contracts
-                FROM contract c
-                JOIN "order" o ON c.order_id = o.order_id
-                WHERE o.order_status = 'Delivered'
-            `);
+                    SELECT COUNT(*) AS active_contracts
+                    FROM contract c
+                             JOIN "order" o ON c.order_id = o.order_id
+                    WHERE o.order_status = 'Delivered'
+                `);
                 const topApplicants   = await db.query(`
-                SELECT cu.client_user_id, cu.first_name, cu.last_name,
-                       COUNT(a.application_id) AS application_count
-                FROM client_user cu
-                LEFT JOIN application a ON cu.client_user_id = a.client_user_id
-                GROUP BY cu.client_user_id
-                ORDER BY application_count DESC LIMIT 5
-            `);
+                    SELECT cu.client_user_id, cu.first_name, cu.last_name,
+                           COUNT(a.application_id) AS application_count
+                    FROM client_user cu
+                             LEFT JOIN application a ON cu.client_user_id = a.client_user_id
+                    GROUP BY cu.client_user_id
+                    ORDER BY application_count DESC LIMIT 5
+                `);
                 application_stats = {
                     total:            parseInt(totalApps.rows[0]?.total || 0),
                     by_status:        appByStatus.rows.map(s => ({ status: s.status, count: parseInt(s.count) })),
@@ -533,20 +533,20 @@ class AdminService {
             };
             try {
                 const deviceCounts = await db.query(`
-                SELECT
-                    COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE status ILIKE 'active')       AS active,
-                    COUNT(*) FILTER (WHERE status ILIKE 'inactive')     AS inactive,
-                    COUNT(*) FILTER (WHERE status ILIKE 'discontinued') AS discontinued,
-                    ROUND(AVG(monthly_cost)::numeric, 2)                AS avg_monthly_cost,
-                    MIN(monthly_cost) AS min_cost,
-                    MAX(monthly_cost) AS max_cost
-                FROM device_catalog
-            `);
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status ILIKE 'active')       AS active,
+                        COUNT(*) FILTER (WHERE status ILIKE 'inactive')     AS inactive,
+                        COUNT(*) FILTER (WHERE status ILIKE 'discontinued') AS discontinued,
+                        ROUND(AVG(monthly_cost)::numeric, 2)                AS avg_monthly_cost,
+                        MIN(monthly_cost) AS min_cost,
+                        MAX(monthly_cost) AS max_cost
+                    FROM device_catalog
+                `);
                 const deviceByMfr = await db.query(`
-                SELECT manufacturer, COUNT(*) AS count
-                FROM device_catalog GROUP BY manufacturer ORDER BY count DESC LIMIT 8
-            `);
+                    SELECT manufacturer, COUNT(*) AS count
+                    FROM device_catalog GROUP BY manufacturer ORDER BY count DESC LIMIT 8
+                `);
                 const dc = deviceCounts.rows[0] || {};
                 device_stats = {
                     total:            parseInt(dc.total            || 0),
@@ -615,25 +615,25 @@ class AdminService {
                 db.query(`SELECT COUNT(*) AS count FROM client_user WHERE registration_status = 'Pending'`),
                 db.query(`SELECT COUNT(*) AS count FROM client_user WHERE registration_status = 'Verified' AND updated_at >= NOW() - INTERVAL '7 days'`),
                 db.query(`
-                SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400) AS avg_days
-                FROM client_user WHERE registration_status = 'Verified' AND updated_at IS NOT NULL
-            `),
+                    SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400) AS avg_days
+                    FROM client_user WHERE registration_status = 'Verified' AND updated_at IS NOT NULL
+                `),
                 db.query(`
-                SELECT region, COUNT(*) AS count FROM client_user
-                WHERE region IS NOT NULL AND region != ''
-                GROUP BY region ORDER BY count DESC LIMIT 1
-            `),
+                    SELECT region, COUNT(*) AS count FROM client_user
+                    WHERE region IS NOT NULL AND region != ''
+                    GROUP BY region ORDER BY count DESC LIMIT 1
+                `),
                 // NEW: applications submitted today
                 db.query(`
-                SELECT COUNT(*) AS count FROM application
-                WHERE created_at >= $1
-            `, [today]).catch(() => ({rows: [{count: 0}]})),
+                    SELECT COUNT(*) AS count FROM application
+                    WHERE created_at >= $1
+                `, [today]).catch(() => ({rows: [{count: 0}]})),
                 // NEW: contract fulfilment — delivered / total applications
                 db.query(`
-                SELECT
-                    (SELECT COUNT(*) FROM contract c JOIN "order" o ON c.order_id = o.order_id WHERE o.order_status = 'Delivered') AS fulfilled,
-                    (SELECT COUNT(*) FROM application) AS total_apps
-            `).catch(() => ({rows: [{fulfilled: 0, total_apps: 0}]})),
+                    SELECT
+                        (SELECT COUNT(*) FROM contract c JOIN "order" o ON c.order_id = o.order_id WHERE o.order_status = 'Delivered') AS fulfilled,
+                        (SELECT COUNT(*) FROM application) AS total_apps
+                `).catch(() => ({rows: [{fulfilled: 0, total_apps: 0}]})),
             ]);
 
             const todaysCount     = parseInt(todaysRegistrations.rows[0]?.count     || 0);
@@ -1090,8 +1090,8 @@ class AdminService {
         try {
             // Get current hash
             const result = await db.query(
-                `SELECT password_hash, first_name, last_name 
-             FROM operational_user WHERE op_user_id = $1`,
+                `SELECT password_hash, first_name, last_name
+                 FROM operational_user WHERE op_user_id = $1`,
                 [userId]
             );
             if (result.rows.length === 0) {
@@ -1117,9 +1117,9 @@ class AdminService {
             const hashedNew = await bcrypt.hash(newPassword, 12);
 
             await db.query(
-                `UPDATE operational_user 
-             SET password_hash = $1
-             WHERE op_user_id = $2`,
+                `UPDATE operational_user
+                 SET password_hash = $1
+                 WHERE op_user_id = $2`,
                 [hashedNew, userId]
             );
 
@@ -1132,10 +1132,10 @@ class AdminService {
     async promoteToSuperAdmin(userId) {
         try {
             const result = await db.query(
-                `UPDATE operational_user 
-             SET is_super_admin = true 
-             WHERE op_user_id = $1
-             RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
+                `UPDATE operational_user
+                 SET is_super_admin = true
+                 WHERE op_user_id = $1
+                     RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
                 [userId]
             );
             if (result.rows.length === 0) throw new Error('User not found.');
@@ -1148,10 +1148,10 @@ class AdminService {
     async demoteSuperAdmin(userId) {
         try {
             const result = await db.query(
-                `UPDATE operational_user 
-             SET is_super_admin = false 
-             WHERE op_user_id = $1
-             RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
+                `UPDATE operational_user
+                 SET is_super_admin = false
+                 WHERE op_user_id = $1
+                     RETURNING op_user_id, first_name, last_name, email, user_role, is_super_admin`,
                 [userId]
             );
             if (result.rows.length === 0) throw new Error('User not found.');
