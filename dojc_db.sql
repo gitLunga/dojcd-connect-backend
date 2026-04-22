@@ -144,6 +144,7 @@ CREATE TABLE "order" ( -- "order" is a reserved keyword, so it's quoted
     order_status VARCHAR(50) NOT NULL CHECK (order_status IN ('Processing', 'Dispatched', 'Delivered', 'Cancelled')),
     order_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     warehouse_ref VARCHAR(255),
+	notes TEXT,
     
     -- Foreign Keys
     CONSTRAINT fk_application
