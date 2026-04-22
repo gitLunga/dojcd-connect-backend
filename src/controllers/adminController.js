@@ -257,27 +257,42 @@ class AdminController {
     }
 
     // Get recent registrations
-    async getRecentRegistrations(req, res) {
+    async getRecentRegistrations() {
         try {
-            const registrations = await adminService.getRecentRegistrations();
-            res.status(200).json({
-                success: true,
-                message: 'Recent registrations retrieved successfully',
-                data: {
-                    registrations: registrations
-                },
-                timestamp: new Date().toISOString()
-            });
+            const result = await db.query(
+                `SELECT * FROM (
+                SELECT 'client'       as user_type,
+                        client_user_id as id,
+                        first_name,
+                        last_name,
+                        email,
+                        registration_status,
+                        created_at
+                 FROM client_user
+                 WHERE created_at >= NOW() - INTERVAL '7 days'
+
+                 UNION ALL
+
+                SELECT 'operational' as user_type,
+                       op_user_id    as id,
+                       first_name,
+                       last_name,
+                       email,
+                       'Verified'    as registration_status,
+                       created_at
+                FROM operational_user
+                WHERE created_at >= NOW() - INTERVAL '7 days'
+            ) combined
+            ORDER BY created_at DESC
+            LIMIT 20`
+            );
+
+            return result.rows;
         } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                data: null,
-                timestamp: new Date().toISOString()
-            });
+            throw new Error(`Error fetching recent registrations: ${error.message}`);
         }
     }
-
+    
     // Search users
     async searchUsers(req, res) {
         try {
@@ -574,7 +589,7 @@ class AdminController {
                 });
             }
 
-            const validRoles = ['Admin', 'MTN_Staff', 'Approver'];
+            const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance', 'Support'];
             if (!validRoles.includes(user_role)) {
                 return res.status(400).json({
                     success: false,
@@ -619,7 +634,7 @@ class AdminController {
             }
 
             if (user_role) {
-                const validRoles = ['Admin', 'Manager', 'Support'];
+                const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance', 'Support'];
                 if (!validRoles.includes(user_role)) {
                     return res.status(400).json({
                         success: false,
@@ -726,12 +741,25 @@ class AdminController {
 
     async promoteToSuperAdmin(req, res) {
         try {
-            const {id} = req.params;
+            const { id } = req.params;
+
+            // Block Manager and Finance from being promoted to Super Admin.
+            // They are operational approvers — super-admin is an admin-tier privilege.
+            const targetUser = await adminService.getOperationalUserById(id);
+            if (targetUser && ['Manager', 'Finance'].includes(targetUser.user_role)) {
+                return res.status(403).json({
+                    success: false,
+                    message: `${targetUser.user_role} accounts cannot be promoted to Super Admin. This privilege is reserved for Admin-role users only.`,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
             const user = await adminService.promoteToSuperAdmin(id);
             return res.status(200).json({
                 success: true,
                 message: `${user.first_name} ${user.last_name} has been promoted to Super Admin.`,
-                data: {user},
+                data: { user },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -744,10 +772,10 @@ class AdminController {
 
     async demoteSuperAdmin(req, res) {
         try {
-            const {id} = req.params;
+            const { id } = req.params;
 
             // Prevent demoting yourself
-            const requestingUser = req.user; // from your JWT middleware
+            const requestingUser = req.user;
             if (requestingUser?.op_user_id === parseInt(id)) {
                 return res.status(400).json({
                     success: false,
@@ -756,11 +784,23 @@ class AdminController {
                 });
             }
 
+            // Block Manager and Finance from being demoted — they are not super admins.
+            // Their access is managed through role assignment, not super-admin flags.
+            const targetUser = await adminService.getOperationalUserById(id);
+            if (targetUser && ['Manager', 'Finance'].includes(targetUser.user_role)) {
+                return res.status(403).json({
+                    success: false,
+                    message: `${targetUser.user_role} accounts are not super admins and cannot be demoted. Manage their access through role assignment instead.`,
+                    data: null,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
             const user = await adminService.demoteSuperAdmin(id);
             return res.status(200).json({
                 success: true,
                 message: `${user.first_name} ${user.last_name} has been demoted from Super Admin.`,
-                data: {user},
+                data: { user },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {

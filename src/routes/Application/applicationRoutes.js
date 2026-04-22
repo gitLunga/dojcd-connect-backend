@@ -20,5 +20,6 @@ router.get('/admin/applications/stats', applicationController.getApplicationStat
 router.get('/admin/applications', applicationController.getAllApplications);
 router.get('/admin/applications/:applicationId', applicationController.getAdminApplicationDetails); // NEW
 router.put('/admin/applications/:applicationId/status', applicationController.updateApplicationStatus);
+router.post('/admin/applications/:applicationId/place-order', applicationController.placeOrder); // ← AD
 
 module.exports = router;

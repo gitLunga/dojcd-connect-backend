@@ -336,7 +336,7 @@ class AuthService {
         }
 
         // Validate user_role
-        const validRoles = ['Admin', 'MTN_Staff', 'Approver'];
+        const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance'];
         if (!validRoles.includes(user_role)) {
             throw new Error(`Invalid user role. Must be one of: ${validRoles.join(', ')}`);
         }

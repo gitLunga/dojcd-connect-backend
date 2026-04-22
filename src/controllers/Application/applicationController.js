@@ -284,7 +284,23 @@ const applicationController = {
             const status = error.message.includes('not found') ? 404 : 500;
             return fail(res, error.message, status);
         }
-    }
+    },
+
+    placeOrder: async (req, res) => {
+        try {
+            const { applicationId } = req.params;
+            const { admin_op_user_id, notes } = req.body;
+            if (!admin_op_user_id) return fail(res, 'Admin user ID is required to place an order.', 400);
+            const result = await applicationService.placeOrder(
+                parseInt(applicationId), parseInt(admin_op_user_id), notes || null
+            );
+            if (result.success) return ok(res, result.message, { order: result.order }, 201);
+            return fail(res, result.message, result.message.includes('already') ? 409 : 422);
+        } catch (error) {
+            console.error('Place order error:', error);
+            return fail(res, error.message || 'Something went wrong placing the order. Please try again.', 500);
+        }
+    },
 };
 
 module.exports = applicationController;

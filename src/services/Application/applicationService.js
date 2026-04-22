@@ -126,7 +126,7 @@ class ApplicationService {
                     client_user_id, device_id, application_status,
                     submission_date, last_updated
                 ) VALUES ($1, $2, 'Pending', NOW(), NOW())
-                RETURNING *
+                    RETURNING *
             `, [clientUserId, deviceId]);
 
             const application = result.rows[0];
@@ -140,18 +140,18 @@ class ApplicationService {
                 `Your application for the ${device.device_name} (${device.plan_name}) has been submitted successfully. We will review it and get back to you soon.`
             );
 
-            // 6. Notify approvers
-            const approversResult = await client.query(`
+            // 6. Notify Managers (Approver 1) — they review first
+            const managersResult = await client.query(`
                 SELECT op_user_id FROM operational_user
-                WHERE user_role IN ('Approver', 'Admin')
+                WHERE user_role IN ('Manager', 'Admin')
             `);
 
-            for (const approver of approversResult.rows) {
+            for (const mgr of managersResult.rows) {
                 await NotificationService.createNotification(
-                    approver.op_user_id,
+                    mgr.op_user_id,
                     'Operational',
-                    'New Application to Review',
-                    `Application #${applicationId} for a ${device.device_name} has been submitted and is awaiting your review.`
+                    'New Application Awaiting Manager Review',
+                    `Application #${applicationId} for ${device.device_name} (${device.plan_name}) has been submitted and is awaiting manager review.`
                 );
             }
 
@@ -242,14 +242,14 @@ class ApplicationService {
                 `Your application #${applicationId} has been cancelled successfully.`
             );
 
-            const approversResult = await client.query(`
+            const staffResult = await client.query(`
                 SELECT op_user_id FROM operational_user
-                WHERE user_role IN ('Approver', 'Admin')
+                WHERE user_role IN ('Manager', 'Admin')
             `);
 
-            for (const approver of approversResult.rows) {
+            for (const staff of staffResult.rows) {
                 await NotificationService.createNotification(
-                    approver.op_user_id,
+                    staff.op_user_id,
                     'Operational',
                     'Application Cancelled by User',
                     `Application #${applicationId} has been cancelled by the applicant.`
@@ -439,7 +439,7 @@ class ApplicationService {
                 throw new Error(`This application has already been ${label} and cannot be changed again.`);
             }
 
-            const validStatuses = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
+            const validStatuses = ['Pending', 'Pending_Finance', 'Approved', 'Rejected', 'Cancelled'];
             if (!validStatuses.includes(statusData.status)) {
                 throw new Error(`"${statusData.status}" is not a valid status.`);
             }
@@ -452,30 +452,32 @@ class ApplicationService {
             const device = deviceResult.rows[0] || { device_name: 'device', plan_name: '' };
 
             if (statusData.status === 'Approved') {
-                if (!approverId) {
-                    throw new Error('An approver ID is required to approve an application.');
-                }
+                // ── Admin cannot directly approve ────────────────────────────
+                // Final approval must go through: Manager → Finance → Approved.
+                // Admin role here is oversight only. Use the approver dashboards.
+                throw new Error(
+                    'Applications must be approved through the approval workflow: ' +
+                    'Manager review first, then Finance approval. ' +
+                    'Direct admin approval is not permitted.'
+                );
 
+            } else if (statusData.status === 'Pending_Finance') {
+                // ── Admin can manually forward to Finance if needed ───────────
                 await client.query(`
                     UPDATE application
-                    SET application_status = 'Approved', last_updated = NOW()
+                    SET application_status = 'Pending_Finance', last_updated = NOW()
                     WHERE application_id = $1
                 `, [applicationId]);
 
-                await client.query(`
-                    INSERT INTO approval (application_id, approver_op_user_id, approval_status, approval_date, notes)
-                    VALUES ($1, $2, 'Approved', NOW(), $3)
-                `, [applicationId, approverId, statusData.notes || null]);
-
-                await client.query(`
-                    INSERT INTO "order" (application_id, mtn_staff_op_user_id, order_status, order_date)
-                    VALUES ($1, $2, 'Processing', NOW())
-                `, [applicationId, approverId]);
-
-                await NotificationService.createNotification(
-                    clientUserId, 'Client', 'Application Approved',
-                    `Great news! Your application for the ${device.device_name} has been approved. Your order is now being processed.`
-                );
+                const financeUsers = await client.query(`
+                    SELECT op_user_id FROM operational_user WHERE user_role = 'Finance'
+                `);
+                for (const fu of financeUsers.rows) {
+                    await NotificationService.createNotification(
+                        fu.op_user_id, 'Operational', 'Application Forwarded to Finance',
+                        `Application #${applicationId} for ${device.device_name} has been forwarded for financial review by an administrator.`
+                    );
+                }
 
             } else if (statusData.status === 'Rejected') {
                 if (!statusData.rejection_reason) {
@@ -521,10 +523,10 @@ class ApplicationService {
 
             const updatedAppResult = await client.query(`
                 SELECT a.*, d.device_name, d.model, d.manufacturer, d.plan_name,
-                    cu.first_name, cu.last_name, cu.email
+                       cu.first_name, cu.last_name, cu.email
                 FROM application a
-                JOIN device_catalog d ON a.device_id = d.device_id
-                JOIN client_user cu ON a.client_user_id = cu.client_user_id
+                         JOIN device_catalog d ON a.device_id = d.device_id
+                         JOIN client_user cu ON a.client_user_id = cu.client_user_id
                 WHERE a.application_id = $1
             `, [applicationId]);
 
@@ -599,22 +601,22 @@ class ApplicationService {
                 db.query(query, params),
                 db.query(`
                     SELECT d.device_name, d.manufacturer, d.plan_name,
-                        COUNT(a.application_id) as total_applications,
-                        COALESCE(SUM(CASE WHEN a.application_status = 'Approved' THEN 1 ELSE 0 END), 0) as approved_count,
-                        COALESCE(SUM(CASE WHEN a.application_status = 'Rejected' THEN 1 ELSE 0 END), 0) as rejected_count,
-                        COALESCE(SUM(CASE WHEN a.application_status = 'Pending' THEN 1 ELSE 0 END), 0) as pending_count
+                           COUNT(a.application_id) as total_applications,
+                           COALESCE(SUM(CASE WHEN a.application_status = 'Approved' THEN 1 ELSE 0 END), 0) as approved_count,
+                           COALESCE(SUM(CASE WHEN a.application_status = 'Rejected' THEN 1 ELSE 0 END), 0) as rejected_count,
+                           COALESCE(SUM(CASE WHEN a.application_status = 'Pending' THEN 1 ELSE 0 END), 0) as pending_count
                     FROM device_catalog d
-                    LEFT JOIN application a ON d.device_id = a.device_id
+                             LEFT JOIN application a ON d.device_id = a.device_id
                     GROUP BY d.device_id, d.device_name, d.manufacturer, d.plan_name
                     ORDER BY total_applications DESC
                 `),
                 db.query(`
                     SELECT cu.user_type,
-                        COUNT(a.application_id) as total_applications,
-                        COALESCE(SUM(CASE WHEN a.application_status = 'Approved' THEN 1 ELSE 0 END), 0) as approved_count,
-                        COALESCE(SUM(CASE WHEN a.application_status = 'Rejected' THEN 1 ELSE 0 END), 0) as rejected_count
+                           COUNT(a.application_id) as total_applications,
+                           COALESCE(SUM(CASE WHEN a.application_status = 'Approved' THEN 1 ELSE 0 END), 0) as approved_count,
+                           COALESCE(SUM(CASE WHEN a.application_status = 'Rejected' THEN 1 ELSE 0 END), 0) as rejected_count
                     FROM client_user cu
-                    LEFT JOIN application a ON cu.client_user_id = a.client_user_id
+                             LEFT JOIN application a ON cu.client_user_id = a.client_user_id
                     GROUP BY cu.user_type ORDER BY total_applications DESC
                 `),
                 db.query(`
@@ -694,6 +696,96 @@ class ApplicationService {
             throw new Error(friendlyError(error, 'fetching application details'));
         }
     }
+
+    async placeOrder(applicationId, adminOpUserId, notes = null) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Fetch application + device + client details
+            const appResult = await client.query(`
+                SELECT
+                    a.application_id,
+                    a.application_status,
+                    a.client_user_id,
+                    d.device_name,
+                    d.plan_name,
+                    cu.first_name AS client_first_name,
+                    cu.last_name  AS client_last_name
+                FROM application a
+                JOIN device_catalog d ON a.device_id = d.device_id
+                JOIN client_user cu   ON a.client_user_id = cu.client_user_id
+                WHERE a.application_id = $1
+            `, [applicationId]);
+
+            if (appResult.rows.length === 0) {
+                throw new Error(`Application #${applicationId} not found.`);
+            }
+
+            const app = appResult.rows[0];
+
+            // 2. Guard: must be Approved
+            if (app.application_status !== 'Approved') {
+                return {
+                    success: false,
+                    message: `This application cannot be ordered — current status is "${app.application_status}". Only fully approved applications can have an order placed.`
+                };
+            }
+
+            // 3. Guard: prevent duplicate order
+            const existingOrder = await client.query(`
+                SELECT order_id FROM "order" WHERE application_id = $1 LIMIT 1
+            `, [applicationId]);
+
+            if (existingOrder.rows.length > 0) {
+                return {
+                    success: false,
+                    message: `An order has already been placed for Application #${applicationId} (Order #${existingOrder.rows[0].order_id}).`
+                };
+            }
+
+            // 4. Insert the order row
+            const orderResult = await client.query(`
+                INSERT INTO "order" (application_id, mtn_staff_op_user_id, order_status, order_date, notes)
+                VALUES ($1, $2, 'Processing', NOW(), $3)
+                RETURNING order_id, order_status, order_date
+            `, [applicationId, adminOpUserId, notes]);
+
+            const order = orderResult.rows[0];
+
+            // 5. Notify client
+            await NotificationService.createNotification(
+                app.client_user_id,
+                'Client',
+                'Your Order Has Been Placed with MTN',
+                `Great news, ${app.client_first_name}! Your order for the ${app.device_name} (${app.plan_name}) has been ` +
+                `placed with MTN. You will receive another notification once your device is on its way. ` +
+                `Order reference: #${order.order_id}.`
+            );
+
+            await client.query('COMMIT');
+
+            return {
+                success: true,
+                message: `Order #${order.order_id} has been successfully placed with MTN for Application #${applicationId} and is now being processed.`,
+                order: {
+                    order_id:       order.order_id,
+                    order_status:   order.order_status,
+                    order_date:     order.order_date,
+                    application_id: applicationId,
+                }
+            };
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('placeOrder error:', error);
+            if (error.message.includes('not found')) return { success: false, message: error.message };
+            return { success: false, message: friendlyError(error, 'placing order') };
+        } finally {
+            client.release();
+        }
+    }
+
 }
 
 module.exports = new ApplicationService();

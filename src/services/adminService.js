@@ -246,43 +246,44 @@ class AdminService {
     // Get user statistics
     async getUserStatistics() {
         try {
-            // Client user statistics
-            const clientStats = await db.query(
-                `SELECT registration_status,
-                        COUNT(*) as count
-                 FROM client_user
-                 GROUP BY registration_status`
-            );
+            // Single query with CTEs — 1 connection instead of 4
+            const result = await db.query(`
+                WITH
+                    client_stats AS (
+                        SELECT registration_status, COUNT(*) AS count
+                FROM client_user GROUP BY registration_status
+                    ),
+                    client_total AS (
+                SELECT COUNT(*) AS total FROM client_user
+                    ),
+                    op_stats AS (
+                SELECT user_role, COUNT(*) AS count
+                FROM operational_user GROUP BY user_role
+                    ),
+                    op_total AS (
+                SELECT COUNT(*) AS total FROM operational_user
+                    )
+                SELECT
+                        (SELECT JSON_AGG(ROW_TO_JSON(s)) FROM client_stats s) AS client_stats,
+                        (SELECT total FROM client_total)                       AS client_total,
+                        (SELECT JSON_AGG(ROW_TO_JSON(s)) FROM op_stats s)     AS op_stats,
+                        (SELECT total FROM op_total)                           AS op_total
+            `);
 
-            // Operational user statistics
-            const operationalStats = await db.query(
-                `SELECT user_role,
-                        COUNT(*) as count
-                 FROM operational_user
-                 GROUP BY user_role`
-            );
-
-            // Total counts
-            const totalClients = await db.query(
-                `SELECT COUNT(*) as total
-                 FROM client_user`
-            );
-
-            const totalOperational = await db.query(
-                `SELECT COUNT(*) as total
-                 FROM operational_user`
-            );
+            const row           = result.rows[0];
+            const clientTotal   = parseInt(row.client_total || 0);
+            const opTotal       = parseInt(row.op_total     || 0);
 
             return {
                 client_users: {
-                    stats: clientStats.rows,
-                    total: parseInt(totalClients.rows[0].total)
+                    stats: row.client_stats || [],
+                    total: clientTotal,
                 },
                 operational_users: {
-                    stats: operationalStats.rows,
-                    total: parseInt(totalOperational.rows[0].total)
+                    stats: row.op_stats || [],
+                    total: opTotal,
                 },
-                total_users: parseInt(totalClients.rows[0].total) + parseInt(totalOperational.rows[0].total)
+                total_users: clientTotal + opTotal,
             };
         } catch (error) {
             throw new Error(`Error fetching statistics: ${error.message}`);
@@ -430,136 +431,172 @@ class AdminService {
 // Enhanced statistics method
     async getEnhancedStatistics() {
         try {
-            const userStats = await this.getUserStatistics();
-
             const lastMonth    = new Date(); lastMonth.setMonth(lastMonth.getMonth() - 1);
             const twoMonthsAgo = new Date(); twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
             const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-            // ── Run ONE AT A TIME — no parallel Promise.all ───────────────────
-            const newClientsThisMonth    = await db.query(`SELECT COUNT(*) AS count FROM client_user      WHERE created_at >= $1`, [lastMonth]);
-            const newOperationalThisMonth= await db.query(`SELECT COUNT(*) AS count FROM operational_user WHERE created_at >= $1`, [lastMonth]);
-            const lastMonthClients       = await db.query(`SELECT COUNT(*) AS count FROM client_user      WHERE created_at >= $1 AND created_at < $2`, [twoMonthsAgo, lastMonth]);
-            const lastMonthOperational   = await db.query(`SELECT COUNT(*) AS count FROM operational_user WHERE created_at >= $1 AND created_at < $2`, [twoMonthsAgo, lastMonth]);
-            const regionStats            = await db.query(`
+            // All user/growth/region/trend data in ONE query
+            const coreResult = await db.query(`
+                WITH
+                    client_stats AS (
+                        SELECT registration_status, COUNT(*) AS count
+                FROM client_user GROUP BY registration_status
+                    ),
+                    op_stats AS (
+                SELECT user_role, COUNT(*) AS count
+                FROM operational_user GROUP BY user_role
+                    ),
+                    client_total   AS (SELECT COUNT(*) AS total FROM client_user),
+                    op_total       AS (SELECT COUNT(*) AS total FROM operational_user),
+                    new_clients    AS (SELECT COUNT(*) AS count FROM client_user      WHERE created_at >= $1),
+                    new_op         AS (SELECT COUNT(*) AS count FROM operational_user WHERE created_at >= $1),
+                    prev_clients   AS (SELECT COUNT(*) AS count FROM client_user      WHERE created_at >= $2 AND created_at < $1),
+                    prev_op        AS (SELECT COUNT(*) AS count FROM operational_user WHERE created_at >= $2 AND created_at < $1),
+                    region_stats   AS (
                 SELECT COALESCE(region, 'Not Specified') AS region, COUNT(*) AS count
                 FROM client_user GROUP BY region ORDER BY count DESC
-            `);
-            const monthlyTrends          = await db.query(`
-                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
-                   EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
-                   COUNT(*) AS registrations, 'client' AS user_type
-                FROM client_user WHERE created_at >= $1
-                GROUP BY DATE_TRUNC('month', created_at)
-                UNION ALL
-                SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
-                   EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
-                   COUNT(*) AS registrations, 'operational' AS user_type
-                FROM operational_user WHERE created_at >= $1
-                GROUP BY DATE_TRUNC('month', created_at)
-                ORDER BY month_num
-            `, [sixMonthsAgo]);
-
-            const currentClients      = parseInt(newClientsThisMonth.rows[0]?.count      || 0);
-            const previousClients     = parseInt(lastMonthClients.rows[0]?.count         || 0);
-            const currentOperational  = parseInt(newOperationalThisMonth.rows[0]?.count  || 0);
-            const previousOperational = parseInt(lastMonthOperational.rows[0]?.count     || 0);
-
-            const clientGrowth      = previousClients     > 0 ? Math.round(((currentClients     - previousClients)     / previousClients)     * 100) : 100;
-            const operationalGrowth = previousOperational > 0 ? Math.round(((currentOperational - previousOperational) / previousOperational) * 100) : 100;
-
-            const groupedTrends = monthlyTrends.rows.reduce((acc, row) => {
-                if (!acc[row.month]) acc[row.month] = { month: row.month, clients: 0, operational: 0, total: 0 };
-                if (row.user_type === 'client') acc[row.month].clients     += parseInt(row.registrations);
-                else                            acc[row.month].operational += parseInt(row.registrations);
-                acc[row.month].total = acc[row.month].clients + acc[row.month].operational;
-                return acc;
-            }, {});
-
-            // ── Recent registrations ──────────────────────────────────────────
-            let recentRegistrations = [];
-            try {
-                const rr = await db.query(`
+                    ),
+                    monthly_trends AS (
+                SELECT * FROM (
+                    SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
+                    EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
+                    COUNT(*) AS registrations, 'client' AS user_type
+                    FROM client_user WHERE created_at >= $3
+                    GROUP BY DATE_TRUNC('month', created_at)
+                    UNION ALL
+                    SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
+                    EXTRACT(MONTH FROM DATE_TRUNC('month', created_at)) AS month_num,
+                    COUNT(*) AS registrations, 'operational' AS user_type
+                    FROM operational_user WHERE created_at >= $3
+                    GROUP BY DATE_TRUNC('month', created_at)
+                    ) sub ORDER BY month_num
+                    ),
+                    recent_reg AS (
+                SELECT * FROM (
                     SELECT 'client' AS user_type, client_user_id AS id,
-                           first_name, last_name, email, registration_status, created_at
+                    first_name, last_name, email, registration_status, created_at
                     FROM client_user WHERE created_at >= NOW() - INTERVAL '7 days'
                     UNION ALL
                     SELECT 'operational' AS user_type, op_user_id AS id,
-                           first_name, last_name, email, 'Verified' AS registration_status, created_at
+                    first_name, last_name, email, 'Verified' AS registration_status, created_at
                     FROM operational_user WHERE created_at >= NOW() - INTERVAL '7 days'
-                    ORDER BY created_at DESC LIMIT 20
-                `);
-                recentRegistrations = rr.rows;
-            } catch (_) {}
+                    ) sub ORDER BY created_at DESC LIMIT 20
+                    )
+                SELECT
+                        (SELECT JSON_AGG(ROW_TO_JSON(s)) FROM client_stats s)   AS client_stats,
+                        (SELECT JSON_AGG(ROW_TO_JSON(s)) FROM op_stats s)       AS op_stats,
+                        (SELECT total FROM client_total)                         AS client_total,
+                        (SELECT total FROM op_total)                             AS op_total,
+                        (SELECT count FROM new_clients)                          AS new_clients,
+                        (SELECT count FROM new_op)                               AS new_op,
+                        (SELECT count FROM prev_clients)                         AS prev_clients,
+                        (SELECT count FROM prev_op)                              AS prev_op,
+                        (SELECT JSON_AGG(ROW_TO_JSON(r)) FROM region_stats r)   AS region_stats,
+                        (SELECT JSON_AGG(ROW_TO_JSON(t)) FROM monthly_trends t) AS monthly_trends,
+                        (SELECT JSON_AGG(ROW_TO_JSON(r)) FROM recent_reg r)     AS recent_registrations
+            `, [lastMonth, twoMonthsAgo, sixMonthsAgo]);
 
-            // ── Application stats (sequential, isolated) ──────────────────────
-            let application_stats = {
-                total: 0, by_status: [], top_applicants: [], active_contracts: 0,
+            const row             = coreResult.rows[0];
+            const clientTotal     = parseInt(row.client_total  || 0);
+            const opTotal         = parseInt(row.op_total      || 0);
+            const currentClients  = parseInt(row.new_clients   || 0);
+            const currentOp       = parseInt(row.new_op        || 0);
+            const prevClients     = parseInt(row.prev_clients  || 0);
+            const prevOp          = parseInt(row.prev_op       || 0);
+
+            const clientGrowth      = prevClients > 0 ? Math.round(((currentClients - prevClients) / prevClients) * 100) : 100;
+            const operationalGrowth = prevOp      > 0 ? Math.round(((currentOp - prevOp)           / prevOp)      * 100) : 100;
+
+            const clientStats = row.client_stats || [];
+            const userStats = {
+                client_users:      { stats: clientStats, total: clientTotal },
+                operational_users: { stats: row.op_stats || [], total: opTotal },
+                total_users:       clientTotal + opTotal,
             };
+
+            const trendRows   = row.monthly_trends || [];
+            const groupedTrends = trendRows.reduce((acc, r) => {
+                if (!acc[r.month]) acc[r.month] = { month: r.month, clients: 0, operational: 0, total: 0 };
+                if (r.user_type === 'client') acc[r.month].clients     += parseInt(r.registrations);
+                else                          acc[r.month].operational += parseInt(r.registrations);
+                acc[r.month].total = acc[r.month].clients + acc[r.month].operational;
+                return acc;
+            }, {});
+
+            // Application stats — single query
+            let application_stats = { total: 0, by_status: [], top_applicants: [], active_contracts: 0 };
             try {
-                const appByStatus     = await db.query(`SELECT application_status AS status, COUNT(*) AS count FROM application GROUP BY application_status ORDER BY count DESC`);
-                const totalApps       = await db.query(`SELECT COUNT(*) AS total FROM application`);
-                const activeContracts = await db.query(`
+                const appResult = await db.query(`
+                    WITH
+                        by_status AS (
+                            SELECT application_status AS status, COUNT(*) AS count
+                    FROM application GROUP BY application_status ORDER BY count DESC
+                        ),
+                        total_apps AS (SELECT COUNT(*) AS total FROM application),
+                        contracts  AS (
                     SELECT COUNT(*) AS active_contracts
-                    FROM contract c
-                             JOIN "order" o ON c.order_id = o.order_id
+                    FROM contract c JOIN "order" o ON c.order_id = o.order_id
                     WHERE o.order_status = 'Delivered'
-                `);
-                const topApplicants   = await db.query(`
+                        ),
+                        top_applicants AS (
                     SELECT cu.client_user_id, cu.first_name, cu.last_name,
-                           COUNT(a.application_id) AS application_count
+                        COUNT(a.application_id) AS application_count
                     FROM client_user cu
-                             LEFT JOIN application a ON cu.client_user_id = a.client_user_id
-                    GROUP BY cu.client_user_id
-                    ORDER BY application_count DESC LIMIT 5
+                        LEFT JOIN application a ON cu.client_user_id = a.client_user_id
+                    GROUP BY cu.client_user_id ORDER BY application_count DESC LIMIT 5
+                        )
+                    SELECT
+                            (SELECT JSON_AGG(ROW_TO_JSON(s)) FROM by_status s)       AS by_status,
+                            (SELECT total FROM total_apps)                            AS total,
+                            (SELECT active_contracts FROM contracts)                  AS active_contracts,
+                            (SELECT JSON_AGG(ROW_TO_JSON(t)) FROM top_applicants t)  AS top_applicants
                 `);
+                const ar = appResult.rows[0];
                 application_stats = {
-                    total:            parseInt(totalApps.rows[0]?.total || 0),
-                    by_status:        appByStatus.rows.map(s => ({ status: s.status, count: parseInt(s.count) })),
-                    top_applicants:   topApplicants.rows.map(u => ({
-                        client_user_id:    u.client_user_id,
-                        first_name:        u.first_name,
-                        last_name:         u.last_name,
-                        application_count: parseInt(u.application_count),
+                    total:            parseInt(ar.total            || 0),
+                    by_status:        (ar.by_status || []).map(s => ({ status: s.status, count: parseInt(s.count) })),
+                    top_applicants:   (ar.top_applicants || []).map(u => ({
+                        client_user_id: u.client_user_id, first_name: u.first_name,
+                        last_name: u.last_name, application_count: parseInt(u.application_count),
                     })),
-                    active_contracts: parseInt(activeContracts.rows[0]?.active_contracts || 0),
+                    active_contracts: parseInt(ar.active_contracts || 0),
                 };
             } catch (_) {}
 
-            // ── Device stats (sequential, isolated) ───────────────────────────
-            let device_stats = {
-                total: 0, active: 0, inactive: 0, discontinued: 0,
-                avg_monthly_cost: '0.00', min_cost: 0, max_cost: 0, by_manufacturer: [],
-            };
+            // Device stats — single CTE query
+            let device_stats = { total: 0, active: 0, inactive: 0, discontinued: 0, avg_monthly_cost: '0.00', min_cost: 0, max_cost: 0, by_manufacturer: [] };
             try {
-                const deviceCounts = await db.query(`
-                    SELECT
-                        COUNT(*) AS total,
-                        COUNT(*) FILTER (WHERE status ILIKE 'active')       AS active,
-                        COUNT(*) FILTER (WHERE status ILIKE 'inactive')     AS inactive,
-                        COUNT(*) FILTER (WHERE status ILIKE 'discontinued') AS discontinued,
-                        ROUND(AVG(monthly_cost)::numeric, 2)                AS avg_monthly_cost,
-                        MIN(monthly_cost) AS min_cost,
-                        MAX(monthly_cost) AS max_cost
-                    FROM device_catalog
-                `);
-                const deviceByMfr = await db.query(`
-                    SELECT manufacturer, COUNT(*) AS count
+                const devResult = await db.query(`
+                    WITH
+                        counts AS (
+                            SELECT
+                                COUNT(*) AS total,
+                                COUNT(*) FILTER (WHERE status ILIKE 'active')       AS active,
+                                COUNT(*) FILTER (WHERE status ILIKE 'inactive')     AS inactive,
+                                COUNT(*) FILTER (WHERE status ILIKE 'discontinued') AS discontinued,
+                                ROUND(AVG(monthly_cost)::numeric, 2)                AS avg_monthly_cost,
+                                MIN(monthly_cost) AS min_cost,
+                                MAX(monthly_cost) AS max_cost
+                            FROM device_catalog
+                        ),
+                        by_mfr AS (
+                            SELECT manufacturer, COUNT(*) AS count
                     FROM device_catalog GROUP BY manufacturer ORDER BY count DESC LIMIT 8
+                        )
+                    SELECT
+                            (SELECT ROW_TO_JSON(c) FROM counts c)           AS counts,
+                            (SELECT JSON_AGG(ROW_TO_JSON(m)) FROM by_mfr m) AS by_manufacturer
                 `);
-                const dc = deviceCounts.rows[0] || {};
+                const d = devResult.rows[0]?.counts || {};
                 device_stats = {
-                    total:            parseInt(dc.total            || 0),
-                    active:           parseInt(dc.active           || 0),
-                    inactive:         parseInt(dc.inactive         || 0),
-                    discontinued:     parseInt(dc.discontinued     || 0),
-                    avg_monthly_cost: parseFloat(dc.avg_monthly_cost || 0).toFixed(2),
-                    min_cost:         parseFloat(dc.min_cost        || 0),
-                    max_cost:         parseFloat(dc.max_cost        || 0),
-                    by_manufacturer:  deviceByMfr.rows.map(r => ({
-                        manufacturer: r.manufacturer,
-                        count:        parseInt(r.count),
-                    })),
+                    total:            parseInt(d.total            || 0),
+                    active:           parseInt(d.active           || 0),
+                    inactive:         parseInt(d.inactive         || 0),
+                    discontinued:     parseInt(d.discontinued     || 0),
+                    avg_monthly_cost: parseFloat(d.avg_monthly_cost || 0).toFixed(2),
+                    min_cost:         parseFloat(d.min_cost        || 0),
+                    max_cost:         parseFloat(d.max_cost        || 0),
+                    by_manufacturer:  (devResult.rows[0]?.by_manufacturer || []).map(r => ({ manufacturer: r.manufacturer, count: parseInt(r.count) })),
                 };
             } catch (_) {}
 
@@ -567,29 +604,29 @@ class AdminService {
                 ...userStats,
                 growth_metrics: {
                     new_clients_this_month:        currentClients,
-                    new_operational_this_month:    currentOperational,
+                    new_operational_this_month:    currentOp,
                     client_growth_percentage:      clientGrowth,
                     operational_growth_percentage: operationalGrowth,
                     total_growth_percentage: Math.round(
-                        ((currentClients + currentOperational) / (previousClients + previousOperational + 1) - 1) * 100
+                        ((currentClients + currentOp) / (prevClients + prevOp + 1) - 1) * 100
                     ),
                 },
-                region_stats:         regionStats.rows,
+                region_stats:         row.region_stats         || [],
                 monthly_trends:       Object.values(groupedTrends),
                 summary: {
                     total_users:       userStats.total_users,
-                    total_clients:     userStats.client_users.total,
-                    total_operational: userStats.operational_users.total,
-                    verification_rate: userStats.client_users.total > 0
+                    total_clients:     clientTotal,
+                    total_operational: opTotal,
+                    verification_rate: clientTotal > 0
                         ? Math.round(
-                            (userStats.client_users.stats.find(s => s.registration_status === 'Verified')?.count || 0)
-                            / userStats.client_users.total * 100
+                            (clientStats.find(s => s.registration_status === 'Verified')?.count || 0)
+                            / clientTotal * 100
                         )
                         : 0,
                 },
                 application_stats,
                 device_stats,
-                recent_registrations: recentRegistrations,
+                recent_registrations: row.recent_registrations || [],
             };
         } catch (error) {
             throw new Error(`Error fetching enhanced statistics: ${error.message}`);
@@ -604,63 +641,75 @@ class AdminService {
             const today     = new Date(); today.setHours(0, 0, 0, 0);
             const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
 
-            const [
-                todaysRegistrations, yesterdaysRegistrations,
-                pendingApprovals,    recentlyVerified,
-                avgVerificationTime, mostActiveRegion,
-                todaysApplications,  contractFulfilment,
-            ] = await Promise.all([
-                db.query(`SELECT COUNT(*) AS count FROM client_user WHERE created_at >= $1`, [today]),
-                db.query(`SELECT COUNT(*) AS count FROM client_user WHERE created_at >= $1 AND created_at < $2`, [yesterday, today]),
-                db.query(`SELECT COUNT(*) AS count FROM client_user WHERE registration_status = 'Pending'`),
-                db.query(`SELECT COUNT(*) AS count FROM client_user WHERE registration_status = 'Verified' AND updated_at >= NOW() - INTERVAL '7 days'`),
-                db.query(`
-                    SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400) AS avg_days
-                    FROM client_user WHERE registration_status = 'Verified' AND updated_at IS NOT NULL
-                `),
-                db.query(`
-                    SELECT region, COUNT(*) AS count FROM client_user
-                    WHERE region IS NOT NULL AND region != ''
-                    GROUP BY region ORDER BY count DESC LIMIT 1
-                `),
-                // NEW: applications submitted today
-                db.query(`
-                    SELECT COUNT(*) AS count FROM application
-                    WHERE created_at >= $1
-                `, [today]).catch(() => ({rows: [{count: 0}]})),
-                // NEW: contract fulfilment — delivered / total applications
-                db.query(`
-                    SELECT
-                        (SELECT COUNT(*) FROM contract c JOIN "order" o ON c.order_id = o.order_id WHERE o.order_status = 'Delivered') AS fulfilled,
-                        (SELECT COUNT(*) FROM application) AS total_apps
-                `).catch(() => ({rows: [{fulfilled: 0, total_apps: 0}]})),
-            ]);
+            // Single CTE query — 1 connection instead of 8
+            const result = await db.query(`
+                WITH
+                    todays_reg AS (
+                        SELECT COUNT(*) AS count FROM client_user WHERE created_at >= $1
+                    ),
+                    yesterdays_reg AS (
+                SELECT COUNT(*) AS count FROM client_user WHERE created_at >= $2 AND created_at < $1
+                    ),
+                    pending AS (
+                SELECT COUNT(*) AS count FROM client_user WHERE registration_status = 'Pending'
+                    ),
+                    recently_verified AS (
+                SELECT COUNT(*) AS count FROM client_user
+                WHERE registration_status = 'Verified' AND updated_at >= NOW() - INTERVAL '7 days'
+                    ),
+                    avg_verification AS (
+                SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400), 0) AS avg_days
+                FROM client_user WHERE registration_status = 'Verified' AND updated_at IS NOT NULL
+                    ),
+                    top_region AS (
+                SELECT region, COUNT(*) AS count FROM client_user
+                WHERE region IS NOT NULL AND region != ''
+                GROUP BY region ORDER BY count DESC LIMIT 1
+                    ),
+                    todays_apps AS (
+                SELECT COUNT(*) AS count FROM application WHERE created_at >= $1
+                    ),
+                    fulfilment AS (
+                SELECT
+                    (SELECT COUNT(*) FROM contract c JOIN "order" o ON c.order_id = o.order_id WHERE o.order_status = 'Delivered') AS fulfilled,
+                    (SELECT COUNT(*) FROM application) AS total_apps
+                    )
+                SELECT
+                        (SELECT count    FROM todays_reg)        AS todays_registrations,
+                        (SELECT count    FROM yesterdays_reg)    AS yesterdays_registrations,
+                        (SELECT count    FROM pending)           AS pending_approvals,
+                        (SELECT count    FROM recently_verified) AS recently_verified,
+                        (SELECT avg_days FROM avg_verification)  AS avg_verification_days,
+                        (SELECT region   FROM top_region)        AS most_active_region,
+                        (SELECT count    FROM top_region)        AS region_user_count,
+                        (SELECT count    FROM todays_apps)       AS todays_applications,
+                        (SELECT fulfilled  FROM fulfilment)      AS fulfilled,
+                        (SELECT total_apps FROM fulfilment)      AS total_apps
+            `, [today, yesterday]);
 
-            const todaysCount     = parseInt(todaysRegistrations.rows[0]?.count     || 0);
-            const yesterdaysCount = parseInt(yesterdaysRegistrations.rows[0]?.count || 0);
+            const row             = result.rows[0];
+            const todaysCount     = parseInt(row.todays_registrations     || 0);
+            const yesterdaysCount = parseInt(row.yesterdays_registrations || 0);
             const dailyGrowth     = yesterdaysCount > 0
                 ? Math.round(((todaysCount - yesterdaysCount) / yesterdaysCount) * 100)
                 : (todaysCount > 0 ? 100 : 0);
 
-            const fulfilled  = parseInt(contractFulfilment.rows[0]?.fulfilled  || 0);
-            const totalApps  = parseInt(contractFulfilment.rows[0]?.total_apps || 0);
+            const fulfilled  = parseInt(row.fulfilled  || 0);
+            const totalApps  = parseInt(row.total_apps || 0);
             const fulfilmentRate = totalApps > 0 ? parseFloat(((fulfilled / totalApps) * 100).toFixed(1)) : 0;
 
             return {
-                // All original fields — unchanged
-                todays_registrations:  todaysCount,
-                daily_growth:          dailyGrowth,
-                pending_approvals:     parseInt(pendingApprovals.rows[0]?.count || 0),
-                recently_verified:     parseInt(recentlyVerified.rows[0]?.count || 0),
-                avg_verification_days: parseFloat(avgVerificationTime.rows[0]?.avg_days || 0).toFixed(1),
-                most_active_region:    mostActiveRegion.rows[0]?.region || 'N/A',
-                region_user_count:     parseInt(mostActiveRegion.rows[0]?.count || 0),
-                timestamp:             new Date().toISOString(),
-
-                // ── NEW fields ──────────────────────────────────────────────────
-                todays_applications:   parseInt(todaysApplications.rows[0]?.count || 0),
-                active_contracts:      fulfilled,
-                total_applications:    totalApps,
+                todays_registrations:     todaysCount,
+                daily_growth:             dailyGrowth,
+                pending_approvals:        parseInt(row.pending_approvals     || 0),
+                recently_verified:        parseInt(row.recently_verified     || 0),
+                avg_verification_days:    parseFloat(row.avg_verification_days || 0).toFixed(1),
+                most_active_region:       row.most_active_region || 'N/A',
+                region_user_count:        parseInt(row.region_user_count     || 0),
+                timestamp:                new Date().toISOString(),
+                todays_applications:      parseInt(row.todays_applications   || 0),
+                active_contracts:         fulfilled,
+                total_applications:       totalApps,
                 contract_fulfilment_rate: fulfilmentRate,
             };
         } catch (error) {

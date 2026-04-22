@@ -7,6 +7,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const applicationRoutes = require('./routes/Application/applicationRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
+const approverRoutes = require('./routes/approverRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -15,7 +16,8 @@ require("./config/db"); // Initialize DB connection
 app.use(cors({
     origin: [
         "https://admin.malcam.co.za",
-        "https://client.malcam.co.za"
+        "https://client.malcam.co.za",
+        "http://localhost:3000"
     ],
     // Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -52,6 +54,8 @@ app.get('/api/test', (req, res) => {
     });
 });
 
+
+
 //authorization routes
 app.use('/api/auth', authRoutes);
 
@@ -65,5 +69,16 @@ app.use('/api/notifications', notificationRoutes);
 
 //device routes
 app.use('/api', deviceRoutes);
+
+app.use('/api/approver', approverRoutes);
+
+app.get('/api/debug/pool', (req, res) => {
+    const pool = require('./config/db');
+    res.json({
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount
+    });
+});
 
 module.exports = app;
