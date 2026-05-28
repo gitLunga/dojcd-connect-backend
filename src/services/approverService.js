@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const notificationService = require('./notificationService');
 const auditService        = require('./auditService');
+const emailService        = require('./emailService');
 const SLA                 = require('../config/slaConfig');
 
 function friendlyError(error, context = 'operation') {
@@ -292,6 +293,10 @@ class ApproverService {
 
             await client.query('COMMIT');
 
+            emailService.sendApplicationApprovedByManager(
+                app.applicant_email, app.applicant_first_name, app.device_name, applicationId
+            ).catch(() => {});
+
             return {
                 success: true,
                 message: `Application #${applicationId} has been approved and forwarded to Finance.`,
@@ -365,6 +370,10 @@ class ApproverService {
             );
 
             await client.query('COMMIT');
+
+            emailService.sendApplicationRejected(
+                app.applicant_email, app.applicant_first_name, app.device_name, applicationId, rejectionReason
+            ).catch(() => {});
 
             return {
                 success: true,
@@ -549,6 +558,10 @@ class ApproverService {
             }
 
             await client.query('COMMIT');
+
+            emailService.sendApplicationFullyApproved(
+                app.applicant_email, app.applicant_first_name, app.device_name, applicationId
+            ).catch(() => {});
 
             return {
                 success: true,

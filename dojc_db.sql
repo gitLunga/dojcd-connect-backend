@@ -327,6 +327,26 @@ CREATE INDEX idx_refresh_token_hash ON refresh_token (token_hash);
 -- 14. LOGIN_ATTEMPT
 --     Every login attempt is recorded for brute-force detection and compliance.
 -- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+-- 15. PASSWORD_RESET_TOKEN
+-- -----------------------------------------------------------------------------
+CREATE TABLE password_reset_token (
+    token_id   SERIAL PRIMARY KEY,
+    email      VARCHAR(255) NOT NULL,
+    user_type  VARCHAR(20)  NOT NULL
+        CHECK (user_type IN ('Client', 'Operational')),
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at    TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_prt_email ON password_reset_token (email, created_at DESC);
+CREATE INDEX idx_prt_hash  ON password_reset_token (token_hash);
+
+-- -----------------------------------------------------------------------------
+-- 16. LOGIN_ATTEMPT
+-- -----------------------------------------------------------------------------
 CREATE TABLE login_attempt (
     attempt_id BIGSERIAL PRIMARY KEY,
     email      VARCHAR(255) NOT NULL,

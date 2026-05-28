@@ -142,6 +142,55 @@ class AuthController {
         }
     }
 
+    // POST /api/auth/change-password  (requires authenticate middleware)
+    async changePassword(req, res) {
+        try {
+            const { userId, userType } = req.user;
+            const { current_password, new_password } = req.body;
+            if (!current_password || !new_password) {
+                return res.status(400).json({ success: false, message: 'current_password and new_password are required.', data: null });
+            }
+            await authService.changePassword(userId, userType, current_password, new_password);
+            return res.status(200).json({ success: true, message: 'Password changed successfully.', data: null, timestamp: new Date().toISOString() });
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message, data: null, timestamp: new Date().toISOString() });
+        }
+    }
+
+    // POST /api/auth/forgot-password  (public)
+    async forgotPassword(req, res) {
+        try {
+            const { email } = req.body;
+            if (!email) return res.status(400).json({ success: false, message: 'Email is required.', data: null });
+            const resetBaseUrl = process.env.FRONTEND_RESET_URL || `${req.protocol}://${req.get('host')}/reset-password`;
+            await authService.requestPasswordReset(email.trim().toLowerCase(), resetBaseUrl);
+            // Always 200 — do not reveal whether the email exists
+            return res.status(200).json({
+                success: true,
+                message: 'If that email is registered, a reset link has been sent.',
+                data: null,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (error) {
+            // SMTP failure reaches here — return a user-friendly error
+            return res.status(500).json({ success: false, message: 'Unable to send reset email. Please try again later.', data: null });
+        }
+    }
+
+    // POST /api/auth/reset-password  (public)
+    async resetPassword(req, res) {
+        try {
+            const { token, new_password } = req.body;
+            if (!token || !new_password) {
+                return res.status(400).json({ success: false, message: 'token and new_password are required.', data: null });
+            }
+            const result = await authService.resetPassword(token, new_password);
+            return res.status(200).json({ success: true, message: result.message, data: null, timestamp: new Date().toISOString() });
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message, data: null, timestamp: new Date().toISOString() });
+        }
+    }
+
     // POST /api/auth/refresh
     // Body: { refreshToken: "<raw token>" }
     async refresh(req, res) {

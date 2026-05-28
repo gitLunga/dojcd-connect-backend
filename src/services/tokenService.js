@@ -12,8 +12,8 @@ if (!ACCESS_SECRET) {
 
 // ── Access token ──────────────────────────────────────────────────────────────
 
-function generateAccessToken(userId, userType, role = null, departmentId = null) {
-    return jwt.sign({ userId, userType, role, departmentId }, ACCESS_SECRET, { expiresIn: ACCESS_TTL });
+function generateAccessToken(userId, userType, role = null, departmentId = null, mustChangePassword = false) {
+    return jwt.sign({ userId, userType, role, departmentId, mustChangePassword }, ACCESS_SECRET, { expiresIn: ACCESS_TTL });
 }
 
 function verifyAccessToken(token) {
@@ -67,14 +67,17 @@ async function refreshTokens(rawToken) {
     let role = null;
     let departmentId = null;
 
+    let mustChangePassword = false;
+
     if (userType === 'Operational') {
         const userResult = await db.query(
-            `SELECT user_role, department_id FROM operational_user WHERE op_user_id = $1 AND is_deleted = false`,
+            `SELECT user_role, department_id, must_change_password FROM operational_user WHERE op_user_id = $1 AND is_deleted = false`,
             [userId]
         );
         if (userResult.rows.length > 0) {
-            role         = userResult.rows[0].user_role;
-            departmentId = userResult.rows[0].department_id || null;
+            role              = userResult.rows[0].user_role;
+            departmentId      = userResult.rows[0].department_id || null;
+            mustChangePassword = userResult.rows[0].must_change_password || false;
         }
     } else {
         const userResult = await db.query(
@@ -84,7 +87,7 @@ async function refreshTokens(rawToken) {
         if (userResult.rows.length > 0) departmentId = userResult.rows[0].department_id || null;
     }
 
-    const accessToken  = generateAccessToken(userId, userType, role, departmentId);
+    const accessToken  = generateAccessToken(userId, userType, role, departmentId, mustChangePassword);
     const refreshToken = await generateRefreshToken(userId, userType);
 
     return { accessToken, refreshToken };

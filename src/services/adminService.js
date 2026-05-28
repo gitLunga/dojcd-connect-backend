@@ -1,7 +1,9 @@
-const db = require('../config/db');
-const path = require('path');
-const storage = require('../config/localStorage');
-const bcrypt = require('bcrypt');
+const db             = require('../config/db');
+const path           = require('path');
+const storage        = require('../config/localStorage');
+const bcrypt         = require('bcrypt');
+const passwordPolicy = require('../utils/passwordPolicy');
+const emailService   = require('./emailService');
 
 
 class AdminService {
@@ -1043,7 +1045,13 @@ class AdminService {
                 ]
             );
 
-            // ✅ MUST return both — frontend reads default_password from this
+            emailService.sendOperationalUserWelcome(
+                userData.email.trim().toLowerCase(),
+                userData.first_name.trim(),
+                userData.user_role,
+                rawPassword
+            ).catch(() => {});
+
             return {
                 user: result.rows[0],
                 defaultPassword: rawPassword,
@@ -1140,44 +1148,36 @@ class AdminService {
 
     async changeOperationalUserPassword(userId, currentPassword, newPassword) {
         try {
-            // Get current hash
+            passwordPolicy.enforce(newPassword);
+
             const result = await db.query(
-                `SELECT password_hash, first_name, last_name
-                 FROM operational_user WHERE op_user_id = $1`,
+                `SELECT password_hash, email, first_name FROM operational_user WHERE op_user_id = $1`,
                 [userId]
             );
-            if (result.rows.length === 0) {
-                throw new Error('User not found.');
-            }
+            if (result.rows.length === 0) throw new Error('User not found.');
 
             const user = result.rows[0];
 
-            // Verify current password
             const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
-            if (!isMatch) {
-                throw new Error('Current password is incorrect.');
-            }
+            if (!isMatch) throw new Error('Current password is incorrect.');
 
-            // Validate new password
-            if (newPassword.length < 8) {
-                throw new Error('New password must be at least 8 characters.');
-            }
-            if (newPassword === currentPassword) {
-                throw new Error('New password must be different from the current password.');
-            }
+            const isSame = await bcrypt.compare(newPassword, user.password_hash);
+            if (isSame) throw new Error('New password must be different from the current password.');
 
-            const hashedNew = await bcrypt.hash(newPassword, 12);
+            const hashedNew = await bcrypt.hash(newPassword, 10);
 
             await db.query(
                 `UPDATE operational_user
-                 SET password_hash = $1
+                 SET password_hash = $1, must_change_password = false, updated_at = NOW()
                  WHERE op_user_id = $2`,
                 [hashedNew, userId]
             );
 
+            emailService.sendPasswordChanged(user.email, user.first_name).catch(() => {});
+
             return { success: true };
         } catch (error) {
-            throw new Error(`Error changing password: ${error.message}`);
+            throw new Error(error.message);
         }
     }
 

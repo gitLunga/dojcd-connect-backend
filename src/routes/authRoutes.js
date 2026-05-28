@@ -35,7 +35,11 @@ router.post('/login-client',      (req, res) => authController.loginClient(req, 
 router.post('/login-operational', (req, res) => authController.loginOperational(req, res));
 
 // Refresh access token — authenticated by the refresh token itself (no Bearer header needed)
-router.post('/refresh', (req, res) => authController.refresh(req, res));
+router.post('/refresh',         (req, res) => authController.refresh(req, res));
+
+// Forgot / reset password — public
+router.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
+router.post('/reset-password',  (req, res) => authController.resetPassword(req, res));
 
 // ── Requires valid access token ───────────────────────────────────────────────
 
@@ -60,6 +64,9 @@ router.post(
     requireRoles('Admin'),
     (req, res) => authController.registerOperational(req, res)
 );
+
+// Change password — any authenticated user
+router.post('/change-password', authenticate, (req, res) => authController.changePassword(req, res));
 
 // Logout — invalidates the supplied refresh token
 router.post('/logout', authenticate, (req, res) => authController.logout(req, res));

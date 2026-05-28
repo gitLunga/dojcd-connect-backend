@@ -2,6 +2,7 @@
 const db = require('../../config/db');
 const NotificationService = require('../notificationService');
 const auditService        = require('../auditService');
+const emailService        = require('../emailService');
 
 // ─── Utility: map raw errors to friendly messages ─────────────────────────────
 function friendlyError(error, context = 'operation') {
@@ -121,7 +122,14 @@ class ApplicationService {
                 throw new Error(`You already have a pending application for the ${device.device_name}. Please wait for it to be reviewed before applying again.`);
             }
 
-            // 4. Insert application
+            // 4. Get client email for notification
+            const clientRow = await client.query(
+                `SELECT email, first_name FROM client_user WHERE client_user_id = $1`, [clientUserId]
+            );
+            const clientEmail     = clientRow.rows[0]?.email;
+            const clientFirstName = clientRow.rows[0]?.first_name;
+
+            // 5. Insert application
             const result = await client.query(`
                 INSERT INTO application (
                     client_user_id, device_id, application_status,
@@ -167,6 +175,8 @@ class ApplicationService {
             }
 
             await client.query('COMMIT');
+
+            emailService.sendApplicationSubmitted(clientEmail, clientFirstName, device.device_name, applicationId).catch(() => {});
 
             return {
                 success: true,
@@ -805,6 +815,10 @@ class ApplicationService {
             );
 
             await client.query('COMMIT');
+
+            emailService.sendOrderPlaced(
+                app.client_user_id, app.client_first_name, app.device_name, order.order_id
+            ).catch(() => {});
 
             return {
                 success: true,
