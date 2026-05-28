@@ -70,6 +70,7 @@ CREATE TABLE operational_user (
     email                VARCHAR(255) UNIQUE NOT NULL,
     user_role            VARCHAR(50) NOT NULL
         CHECK (user_role IN ('Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance')),
+    department_id        VARCHAR(50),
     password_hash        VARCHAR(255) NOT NULL,
     cognito_id           VARCHAR(255) UNIQUE,
     must_change_password BOOLEAN NOT NULL DEFAULT true,
@@ -83,6 +84,10 @@ CREATE TABLE operational_user (
 CREATE INDEX idx_operational_user_active
     ON operational_user (is_deleted)
     WHERE is_deleted = false;
+
+CREATE INDEX idx_operational_user_department
+    ON operational_user (department_id)
+    WHERE department_id IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
 -- 4. APPLICATION

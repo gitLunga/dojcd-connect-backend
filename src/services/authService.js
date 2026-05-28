@@ -172,7 +172,7 @@ class AuthService {
     }
 
     async registerOperationalUser(userData, createdByAdminId = null) {
-        const { title, first_name, last_name, email, user_role, password } = userData;
+        const { title, first_name, last_name, email, user_role, password, department_id } = userData;
 
         const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance'];
         if (!validRoles.includes(user_role)) {
@@ -192,9 +192,9 @@ class AuthService {
 
             const result = await client.query(
                 `INSERT INTO operational_user
-                     (title, first_name, last_name, email, user_role, password_hash)
-                 VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-                [title, first_name, last_name, email, user_role, hashedPassword]
+                     (title, first_name, last_name, email, user_role, department_id, password_hash)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+                [title, first_name, last_name, email, user_role, department_id || null, hashedPassword]
             );
 
             if (result.rows.length === 0) throw new Error('Operational user registration failed');
@@ -275,7 +275,9 @@ class AuthService {
         delete userResponse.password_hash;
         userResponse.name = `${user.first_name} ${user.last_name}`.trim();
 
-        const accessToken  = tokenService.generateAccessToken(userResponse.op_user_id, 'Operational', userResponse.user_role);
+        const accessToken  = tokenService.generateAccessToken(
+            userResponse.op_user_id, 'Operational', userResponse.user_role, userResponse.department_id || null
+        );
         const refreshToken = await tokenService.generateRefreshToken(userResponse.op_user_id, 'Operational');
 
         return { user: userResponse, accessToken, refreshToken };
@@ -324,7 +326,8 @@ class AuthService {
         delete userResponse.password_hash;
         delete userResponse.table_type;
 
-        const accessToken  = tokenService.generateAccessToken(userId, userType, role);
+        const departmentId = userType === 'Operational' ? (user.department_id || null) : (user.department_id || null);
+        const accessToken  = tokenService.generateAccessToken(userId, userType, role, departmentId);
         const refreshToken = await tokenService.generateRefreshToken(userId, userType);
 
         return { user: userResponse, accessToken, refreshToken };

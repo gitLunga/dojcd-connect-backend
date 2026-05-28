@@ -689,6 +689,68 @@ class ApproverService {
             throw new Error(friendlyError(error, 'fetching application history'));
         }
     }
+    // ── MY CLIENTS — clients in the same department as the caller ─────────────
+    async getClientsByDepartment(departmentId, filters = {}) {
+        const client = await db.connect();
+        try {
+            const params  = [departmentId];
+            const clauses = [`cu.department_id = $1`];
+            let idx = 2;
+
+            if (filters.registration_status) {
+                clauses.push(`cu.registration_status = $${idx++}`);
+                params.push(filters.registration_status);
+            }
+
+            const limit  = Math.min(parseInt(filters.limit  || 50), 200);
+            const offset = parseInt(filters.offset || 0);
+
+            const result = await client.query(`
+                SELECT
+                    cu.client_user_id,
+                    cu.title,
+                    cu.first_name,
+                    cu.last_name,
+                    cu.email,
+                    cu.phone_number,
+                    cu.region,
+                    cu.persal_id,
+                    cu.department_id,
+                    cu.user_type,
+                    cu.registration_status,
+                    cu.created_at,
+                    COUNT(a.application_id)                                            AS total_applications,
+                    COUNT(a.application_id) FILTER (WHERE a.application_status = 'Pending')          AS pending,
+                    COUNT(a.application_id) FILTER (WHERE a.application_status = 'Pending_Finance')  AS pending_finance,
+                    COUNT(a.application_id) FILTER (WHERE a.application_status = 'Approved')         AS approved,
+                    COUNT(a.application_id) FILTER (WHERE a.application_status = 'Rejected')         AS rejected
+                FROM client_user cu
+                LEFT JOIN application a ON a.client_user_id = cu.client_user_id
+                WHERE ${clauses.join(' AND ')}
+                GROUP BY cu.client_user_id
+                ORDER BY cu.last_name ASC
+                LIMIT $${idx} OFFSET $${idx + 1}
+            `, [...params, limit, offset]);
+
+            const countResult = await client.query(`
+                SELECT COUNT(*) AS total
+                FROM client_user cu
+                WHERE ${clauses.join(' AND ')}
+            `, params);
+
+            return {
+                clients:     result.rows,
+                total:       parseInt(countResult.rows[0].total),
+                department:  departmentId,
+                limit,
+                offset,
+            };
+        } catch (error) {
+            throw new Error(friendlyError(error, 'fetching department clients'));
+        } finally {
+            client.release();
+        }
+    }
 }
 
 module.exports = new ApproverService();

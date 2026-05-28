@@ -12,8 +12,8 @@ if (!ACCESS_SECRET) {
 
 // ── Access token ──────────────────────────────────────────────────────────────
 
-function generateAccessToken(userId, userType, role = null) {
-    return jwt.sign({ userId, userType, role }, ACCESS_SECRET, { expiresIn: ACCESS_TTL });
+function generateAccessToken(userId, userType, role = null, departmentId = null) {
+    return jwt.sign({ userId, userType, role, departmentId }, ACCESS_SECRET, { expiresIn: ACCESS_TTL });
 }
 
 function verifyAccessToken(token) {
@@ -65,16 +65,26 @@ async function refreshTokens(rawToken) {
 
     const { user_id: userId, user_type: userType } = stored;
     let role = null;
+    let departmentId = null;
 
     if (userType === 'Operational') {
         const userResult = await db.query(
-            `SELECT user_role FROM operational_user WHERE op_user_id = $1 AND is_deleted = false`,
+            `SELECT user_role, department_id FROM operational_user WHERE op_user_id = $1 AND is_deleted = false`,
             [userId]
         );
-        if (userResult.rows.length > 0) role = userResult.rows[0].user_role;
+        if (userResult.rows.length > 0) {
+            role         = userResult.rows[0].user_role;
+            departmentId = userResult.rows[0].department_id || null;
+        }
+    } else {
+        const userResult = await db.query(
+            `SELECT department_id FROM client_user WHERE client_user_id = $1`,
+            [userId]
+        );
+        if (userResult.rows.length > 0) departmentId = userResult.rows[0].department_id || null;
     }
 
-    const accessToken  = generateAccessToken(userId, userType, role);
+    const accessToken  = generateAccessToken(userId, userType, role, departmentId);
     const refreshToken = await generateRefreshToken(userId, userType);
 
     return { accessToken, refreshToken };

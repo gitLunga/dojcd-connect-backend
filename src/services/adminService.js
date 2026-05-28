@@ -1029,16 +1029,17 @@ class AdminService {
 
             const result = await db.query(
                 `INSERT INTO operational_user (
-                    title, first_name, last_name, email, user_role, password_hash
-                ) VALUES ($1, $2, $3, $4, $5, $6)
-                     RETURNING op_user_id, title, first_name, last_name, email, user_role, created_at`,
+                    title, first_name, last_name, email, user_role, department_id, password_hash
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING op_user_id, title, first_name, last_name, email, user_role, department_id, created_at`,
                 [
-                    userData.title?.trim() || null,                 // $1
-                    userData.first_name.trim(),           // $2
-                    userData.last_name.trim(),            // $3
-                    userData.email.trim().toLowerCase(),  // $4
-                    userData.user_role,                   // $5
-                    hashedPassword,                       // $6
+                    userData.title?.trim() || null,
+                    userData.first_name.trim(),
+                    userData.last_name.trim(),
+                    userData.email.trim().toLowerCase(),
+                    userData.user_role,
+                    userData.department_id?.trim() || null,
+                    hashedPassword,
                 ]
             );
 
@@ -1086,18 +1087,21 @@ class AdminService {
 
             const result = await db.query(
                 `UPDATE operational_user
-                 SET title = COALESCE($1, title),
-                     first_name = COALESCE($2, first_name),
-                     last_name  = COALESCE($3, last_name),
-                     email      = COALESCE($4, email),
-                     user_role  = COALESCE($5, user_role)
-                 WHERE op_user_id = $6 RETURNING op_user_id, title, first_name, last_name, email, user_role, created_at`,
+                 SET title         = COALESCE($1, title),
+                     first_name    = COALESCE($2, first_name),
+                     last_name     = COALESCE($3, last_name),
+                     email         = COALESCE($4, email),
+                     user_role     = COALESCE($5, user_role),
+                     department_id = COALESCE($6, department_id)
+                 WHERE op_user_id = $7
+                 RETURNING op_user_id, title, first_name, last_name, email, user_role, department_id, created_at`,
                 [
                     userData.title?.trim() || null,
                     userData.first_name?.trim() || null,
                     userData.last_name?.trim() || null,
                     userData.email?.trim().toLowerCase() || null,
                     userData.user_role || null,
+                    userData.department_id?.trim() || null,
                     userId,
                 ]
             );

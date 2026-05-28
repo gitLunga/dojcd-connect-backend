@@ -37,14 +37,23 @@ class ApproverController {
      */
     async getManagerQueue(req, res) {
         try {
-            const result = await approverService.getManagerQueue({
-                region: req.query.region,
+            const filters = {
+                region:        req.query.region,
                 department_id: req.query.department_id,
-                date_from: req.query.date_from,
-                date_to: req.query.date_to,
-                limit: req.query.limit,
-                offset: req.query.offset,
-            });
+                date_from:     req.query.date_from,
+                date_to:       req.query.date_to,
+                limit:         req.query.limit,
+                offset:        req.query.offset,
+            };
+
+            // Managers are always scoped to their own department
+            if (req.user.role === 'Manager' && req.user.departmentId) {
+                filters.department_id = req.user.departmentId;
+            } else if (req.user.role === 'Manager' && !req.user.departmentId) {
+                return fail(res, 'Your account has no department assigned. Contact an Admin.', 403);
+            }
+
+            const result = await approverService.getManagerQueue(filters);
 
             const message = result.total === 0
                 ? 'No applications are currently waiting for your review.'
@@ -168,14 +177,23 @@ class ApproverController {
      */
     async getFinanceQueue(req, res) {
         try {
-            const result = await approverService.getFinanceQueue({
-                region: req.query.region,
+            const filters = {
+                region:        req.query.region,
                 department_id: req.query.department_id,
-                date_from: req.query.date_from,
-                date_to: req.query.date_to,
-                limit: req.query.limit,
-                offset: req.query.offset,
-            });
+                date_from:     req.query.date_from,
+                date_to:       req.query.date_to,
+                limit:         req.query.limit,
+                offset:        req.query.offset,
+            };
+
+            // Finance users are always scoped to their own department
+            if (req.user.role === 'Finance' && req.user.departmentId) {
+                filters.department_id = req.user.departmentId;
+            } else if (req.user.role === 'Finance' && !req.user.departmentId) {
+                return fail(res, 'Your account has no department assigned. Contact an Admin.', 403);
+            }
+
+            const result = await approverService.getFinanceQueue(filters);
 
             const message = result.total === 0
                 ? 'No applications are currently awaiting financial review.'
@@ -259,6 +277,27 @@ class ApproverController {
         } catch (error) {
             console.error('financeReject controller error:', error);
             return fail(res, 'Something went wrong. Please try again.', 500);
+        }
+    }
+    /**
+     * GET /api/approver/my-clients
+     * All client users in the caller's department.
+     * Used by Manager and Finance to see who they are responsible for.
+     */
+    async getMyClients(req, res) {
+        try {
+            const { departmentId } = req.user;
+            if (!departmentId) {
+                return fail(res, 'Your account has no department assigned. Contact an Admin.', 403);
+            }
+            const result = await approverService.getClientsByDepartment(departmentId, {
+                registration_status: req.query.registration_status,
+                limit:  req.query.limit,
+                offset: req.query.offset,
+            });
+            return ok(res, `${result.total} client(s) found in your department.`, result);
+        } catch (error) {
+            return fail(res, error.message, 500);
         }
     }
 }

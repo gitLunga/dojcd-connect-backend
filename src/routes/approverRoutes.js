@@ -7,6 +7,13 @@ const requireRoles       = require('../middleware/authorize');
 // All approver routes require a valid token
 router.use(authenticate);
 
+// ── My department's clients ───────────────────────────────────────────────────
+router.get(
+    '/my-clients',
+    requireRoles('Manager', 'Finance', 'Admin'),
+    (req, res) => approverController.getMyClients(req, res)
+);
+
 // ── Shared (Manager + Finance + Admin) ────────────────────────────────────────
 router.get(
     '/applications/:id',
