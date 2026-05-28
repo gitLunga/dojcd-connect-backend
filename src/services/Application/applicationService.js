@@ -738,6 +738,102 @@ class ApplicationService {
         }
     }
 
+    // ─── RE-SUBMIT APPLICATION ────────────────────────────────────────────────
+
+    async resubmitApplication(originalApplicationId, clientUserId, newDeviceId = null) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Verify the original application belongs to this client and is in a resubmittable state
+            const origResult = await client.query(`
+                SELECT a.*, d.device_id AS orig_device_id, d.device_name
+                FROM application a
+                JOIN device_catalog d ON a.device_id = d.device_id
+                WHERE a.application_id = $1 AND a.client_user_id = $2
+            `, [originalApplicationId, clientUserId]);
+
+            if (origResult.rows.length === 0) {
+                throw new Error('Application not found or you do not have permission to resubmit it.');
+            }
+
+            const orig = origResult.rows[0];
+
+            if (!['Rejected', 'Cancelled'].includes(orig.application_status)) {
+                throw new Error(`Only Rejected or Cancelled applications can be resubmitted. Current status: ${orig.application_status}.`);
+            }
+
+            // Verify eligibility
+            const eligibility = await this.checkUserEligibility(clientUserId);
+            if (!eligibility.eligible) throw new Error(eligibility.reason);
+
+            const deviceId = newDeviceId || orig.orig_device_id;
+
+            // Verify chosen device is still active
+            await this.getDeviceById(deviceId);
+
+            // Prevent duplicate pending resubmission
+            const dupCheck = await client.query(`
+                SELECT application_id FROM application
+                WHERE client_user_id = $1 AND device_id = $2
+                  AND application_status = 'Pending'
+            `, [clientUserId, deviceId]);
+
+            if (dupCheck.rows.length > 0) {
+                throw new Error('You already have a pending application for this device.');
+            }
+
+            // Create the new application referencing the original
+            const newResult = await client.query(`
+                INSERT INTO application
+                    (client_user_id, device_id, application_status,
+                     submission_date, last_updated, parent_application_id)
+                VALUES ($1, $2, 'Pending', NOW(), NOW(), $3)
+                RETURNING *
+            `, [clientUserId, deviceId, originalApplicationId]);
+
+            const newApp = newResult.rows[0];
+
+            await auditService.log(client, {
+                actorId:    clientUserId,
+                actorType:  'Client',
+                action:     'APPLICATION_RESUBMITTED',
+                entityType: 'application',
+                entityId:   newApp.application_id,
+                newValue:   { device_id: deviceId, parent_application_id: originalApplicationId },
+            });
+
+            // Get device info for notification
+            const deviceRow = await client.query(
+                `SELECT device_name, plan_name FROM device_catalog WHERE device_id = $1`, [deviceId]
+            );
+            const device = deviceRow.rows[0] || { device_name: 'device', plan_name: '' };
+
+            await client.query('COMMIT');
+
+            // Notify managers
+            const managers = await db.query(`SELECT op_user_id FROM operational_user WHERE user_role IN ('Manager','Admin')`);
+            for (const m of managers.rows) {
+                await NotificationService.createNotification(m.op_user_id, 'Operational',
+                    'Re-submitted Application Awaiting Review',
+                    `Application #${newApp.application_id} (re-submission of #${originalApplicationId}) for ${device.device_name} is awaiting manager review.`
+                ).catch(() => {});
+            }
+
+            return {
+                success: true,
+                application: newApp,
+                message: `Your application for the ${device.device_name} has been resubmitted successfully (Reference #${newApp.application_id}).`,
+            };
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            return { success: false, message: error.message };
+        } finally {
+            client.release();
+        }
+    }
+
     async placeOrder(applicationId, adminOpUserId, notes = null) {
         const client = await db.connect();
         try {

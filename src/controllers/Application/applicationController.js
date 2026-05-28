@@ -286,6 +286,22 @@ const applicationController = {
         }
     },
 
+    resubmitApplication: async (req, res) => {
+        try {
+            const { clientUserId, applicationId } = req.params;
+            const { device_id } = req.body;
+            const result = await applicationService.resubmitApplication(
+                parseInt(applicationId),
+                parseInt(clientUserId),
+                device_id ? parseInt(device_id) : null
+            );
+            if (result.success) return ok(res, result.message, { application: result.application }, 201);
+            return fail(res, result.message, 422);
+        } catch (error) {
+            return fail(res, error.message || 'Something went wrong.', 500);
+        }
+    },
+
     placeOrder: async (req, res) => {
         try {
             const { applicationId } = req.params;

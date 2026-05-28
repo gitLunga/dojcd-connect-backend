@@ -52,6 +52,10 @@ router.post(
     (req, res) => approverController.managerReject(req, res)
 );
 
+// ── Manager bulk actions ──────────────────────────────────────────────────────
+router.post('/manager/bulk-approve', requireRoles('Manager'), (req, res) => approverController.bulkManagerApprove(req, res));
+router.post('/manager/bulk-reject',  requireRoles('Manager'), (req, res) => approverController.bulkManagerReject(req, res));
+
 // ── Finance (Approver 2) ──────────────────────────────────────────────────────
 router.get(
     '/finance/queue',
@@ -76,5 +80,9 @@ router.post(
     requireRoles('Finance'),
     (req, res) => approverController.financeReject(req, res)
 );
+
+// ── Finance bulk actions ──────────────────────────────────────────────────────
+router.post('/finance/bulk-approve', requireRoles('Finance'), (req, res) => approverController.bulkFinanceApprove(req, res));
+router.post('/finance/bulk-reject',  requireRoles('Finance'), (req, res) => approverController.bulkFinanceReject(req, res));
 
 module.exports = router;

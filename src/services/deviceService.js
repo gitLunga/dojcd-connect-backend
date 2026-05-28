@@ -624,6 +624,27 @@ class DeviceService {
         return true;
     }
 
+    // ─── INVENTORY ───────────────────────────────────────────────────────────
+    async getInventory() {
+        const reportService = require('./reportService');
+        const rows = await reportService.fetchInventoryData();
+        return { success: true, data: rows };
+    }
+
+    async updateStock(deviceId, stockQuantity) {
+        if (stockQuantity !== null && (isNaN(parseInt(stockQuantity)) || parseInt(stockQuantity) < 0)) {
+            throw new Error('Stock quantity must be a non-negative integer or null (unlimited).');
+        }
+        const result = await db.query(
+            `UPDATE device_catalog SET stock_quantity = $1, updated_at = NOW()
+             WHERE device_id = $2
+             RETURNING device_id, device_name, stock_quantity`,
+            [stockQuantity === null ? null : parseInt(stockQuantity), deviceId]
+        );
+        if (result.rows.length === 0) throw new Error('Device not found.');
+        return result.rows[0];
+    }
+
     // ─── CHECK DEVICE AVAILABILITY ───────────────────────────────────────────
     async checkDeviceAvailability(deviceId) {
         try {

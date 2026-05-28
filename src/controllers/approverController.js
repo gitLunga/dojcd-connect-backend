@@ -279,6 +279,62 @@ class ApproverController {
             return fail(res, 'Something went wrong. Please try again.', 500);
         }
     }
+    // ── BULK ACTIONS ──────────────────────────────────────────────────────────
+
+    async bulkManagerApprove(req, res) {
+        try {
+            const managerId      = req.user?.userId;
+            const { application_ids, notes } = req.body;
+            if (!Array.isArray(application_ids) || application_ids.length === 0)
+                return fail(res, 'application_ids must be a non-empty array.');
+            if (application_ids.length > 100)
+                return fail(res, 'Maximum 100 applications per bulk action.');
+            const result = await approverService.bulkManagerApprove(application_ids.map(Number), managerId, notes);
+            return ok(res, `Bulk approve complete: ${result.succeeded}/${result.total} succeeded.`, result);
+        } catch (err) { return fail(res, err.message, 500); }
+    }
+
+    async bulkManagerReject(req, res) {
+        try {
+            const managerId      = req.user?.userId;
+            const { application_ids, rejection_reason } = req.body;
+            if (!Array.isArray(application_ids) || application_ids.length === 0)
+                return fail(res, 'application_ids must be a non-empty array.');
+            if (!rejection_reason?.trim()) return fail(res, 'rejection_reason is required.');
+            if (application_ids.length > 100)
+                return fail(res, 'Maximum 100 applications per bulk action.');
+            const result = await approverService.bulkManagerReject(application_ids.map(Number), managerId, rejection_reason);
+            return ok(res, `Bulk reject complete: ${result.succeeded}/${result.total} succeeded.`, result);
+        } catch (err) { return fail(res, err.message, 500); }
+    }
+
+    async bulkFinanceApprove(req, res) {
+        try {
+            const financeUserId  = req.user?.userId;
+            const { application_ids, notes } = req.body;
+            if (!Array.isArray(application_ids) || application_ids.length === 0)
+                return fail(res, 'application_ids must be a non-empty array.');
+            if (application_ids.length > 100)
+                return fail(res, 'Maximum 100 applications per bulk action.');
+            const result = await approverService.bulkFinanceApprove(application_ids.map(Number), financeUserId, notes);
+            return ok(res, `Bulk approve complete: ${result.succeeded}/${result.total} succeeded.`, result);
+        } catch (err) { return fail(res, err.message, 500); }
+    }
+
+    async bulkFinanceReject(req, res) {
+        try {
+            const financeUserId  = req.user?.userId;
+            const { application_ids, rejection_reason } = req.body;
+            if (!Array.isArray(application_ids) || application_ids.length === 0)
+                return fail(res, 'application_ids must be a non-empty array.');
+            if (!rejection_reason?.trim()) return fail(res, 'rejection_reason is required.');
+            if (application_ids.length > 100)
+                return fail(res, 'Maximum 100 applications per bulk action.');
+            const result = await approverService.bulkFinanceReject(application_ids.map(Number), financeUserId, rejection_reason);
+            return ok(res, `Bulk reject complete: ${result.succeeded}/${result.total} succeeded.`, result);
+        } catch (err) { return fail(res, err.message, 500); }
+    }
+
     /**
      * GET /api/approver/my-clients
      * All client users in the caller's department.

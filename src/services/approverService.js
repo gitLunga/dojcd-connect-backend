@@ -702,6 +702,187 @@ class ApproverService {
             throw new Error(friendlyError(error, 'fetching application history'));
         }
     }
+    // ── BULK MANAGER APPROVE ──────────────────────────────────────────────────
+    async bulkManagerApprove(applicationIds, managerId, notes = null) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const results = [];
+
+            for (const appId of applicationIds) {
+                const app = await getApplicationDetail(client, appId);
+                if (!app || app.application_status !== 'Pending') {
+                    results.push({ application_id: appId, success: false,
+                        message: `Skipped: status is "${app?.application_status || 'not found'}"` });
+                    continue;
+                }
+                await client.query(
+                    `UPDATE application SET application_status='Pending_Finance', last_updated=NOW() WHERE application_id=$1`,
+                    [appId]
+                );
+                await client.query(
+                    `INSERT INTO approval (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
+                     VALUES ($1,$2,'Approved','manager',NOW(),$3)`,
+                    [appId, managerId, notes]
+                );
+                await auditService.log(client, {
+                    actorId: managerId, actorType: 'Operational',
+                    action: 'APPLICATION_APPROVED_MANAGER_BULK', entityType: 'application', entityId: appId,
+                    oldValue: { status: 'Pending' }, newValue: { status: 'Pending_Finance' },
+                });
+                results.push({ application_id: appId, success: true, new_status: 'Pending_Finance' });
+            }
+
+            await client.query('COMMIT');
+
+            // Fire-and-forget notifications
+            for (const r of results.filter(r => r.success)) {
+                notificationService.createNotification(r.application_id, 'Client',
+                    'Application Approved by Manager', 'Your application has been approved by your manager and forwarded to Finance.'
+                ).catch(() => {});
+            }
+
+            const succeeded = results.filter(r => r.success).length;
+            return { results, total: applicationIds.length, succeeded, failed: results.length - succeeded };
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
+
+    // ── BULK MANAGER REJECT ───────────────────────────────────────────────────
+    async bulkManagerReject(applicationIds, managerId, rejectionReason) {
+        if (!rejectionReason?.trim()) throw new Error('A rejection reason is required for bulk rejection.');
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const results = [];
+
+            for (const appId of applicationIds) {
+                const app = await getApplicationDetail(client, appId);
+                if (!app || app.application_status !== 'Pending') {
+                    results.push({ application_id: appId, success: false,
+                        message: `Skipped: status is "${app?.application_status || 'not found'}"` });
+                    continue;
+                }
+                await client.query(
+                    `UPDATE application SET application_status='Rejected', rejection_reason=$2, last_updated=NOW() WHERE application_id=$1`,
+                    [appId, rejectionReason.trim()]
+                );
+                await client.query(
+                    `INSERT INTO approval (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
+                     VALUES ($1,$2,'Rejected','manager',NOW(),$3)`,
+                    [appId, managerId, rejectionReason.trim()]
+                );
+                await auditService.log(client, {
+                    actorId: managerId, actorType: 'Operational',
+                    action: 'APPLICATION_REJECTED_MANAGER_BULK', entityType: 'application', entityId: appId,
+                    oldValue: { status: 'Pending' }, newValue: { status: 'Rejected', rejection_reason: rejectionReason.trim() },
+                });
+                results.push({ application_id: appId, success: true, new_status: 'Rejected' });
+            }
+
+            await client.query('COMMIT');
+
+            const succeeded = results.filter(r => r.success).length;
+            return { results, total: applicationIds.length, succeeded, failed: results.length - succeeded };
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
+
+    // ── BULK FINANCE APPROVE ──────────────────────────────────────────────────
+    async bulkFinanceApprove(applicationIds, financeUserId, notes = null) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const results = [];
+
+            for (const appId of applicationIds) {
+                const app = await getApplicationDetail(client, appId);
+                if (!app || app.application_status !== 'Pending_Finance') {
+                    results.push({ application_id: appId, success: false,
+                        message: `Skipped: status is "${app?.application_status || 'not found'}"` });
+                    continue;
+                }
+                await client.query(
+                    `UPDATE application SET application_status='Approved', last_updated=NOW() WHERE application_id=$1`,
+                    [appId]
+                );
+                await client.query(
+                    `INSERT INTO approval (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
+                     VALUES ($1,$2,'Approved','finance',NOW(),$3)`,
+                    [appId, financeUserId, notes]
+                );
+                await auditService.log(client, {
+                    actorId: financeUserId, actorType: 'Operational',
+                    action: 'APPLICATION_APPROVED_FINANCE_BULK', entityType: 'application', entityId: appId,
+                    oldValue: { status: 'Pending_Finance' }, newValue: { status: 'Approved' },
+                });
+                results.push({ application_id: appId, success: true, new_status: 'Approved' });
+            }
+
+            await client.query('COMMIT');
+
+            const succeeded = results.filter(r => r.success).length;
+            return { results, total: applicationIds.length, succeeded, failed: results.length - succeeded };
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
+
+    // ── BULK FINANCE REJECT ───────────────────────────────────────────────────
+    async bulkFinanceReject(applicationIds, financeUserId, rejectionReason) {
+        if (!rejectionReason?.trim()) throw new Error('A rejection reason is required for bulk rejection.');
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            const results = [];
+
+            for (const appId of applicationIds) {
+                const app = await getApplicationDetail(client, appId);
+                if (!app || app.application_status !== 'Pending_Finance') {
+                    results.push({ application_id: appId, success: false,
+                        message: `Skipped: status is "${app?.application_status || 'not found'}"` });
+                    continue;
+                }
+                await client.query(
+                    `UPDATE application SET application_status='Rejected', rejection_reason=$2, last_updated=NOW() WHERE application_id=$1`,
+                    [appId, rejectionReason.trim()]
+                );
+                await client.query(
+                    `INSERT INTO approval (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
+                     VALUES ($1,$2,'Rejected','finance',NOW(),$3)`,
+                    [appId, financeUserId, rejectionReason.trim()]
+                );
+                await auditService.log(client, {
+                    actorId: financeUserId, actorType: 'Operational',
+                    action: 'APPLICATION_REJECTED_FINANCE_BULK', entityType: 'application', entityId: appId,
+                    oldValue: { status: 'Pending_Finance' }, newValue: { status: 'Rejected', rejection_reason: rejectionReason.trim() },
+                });
+                results.push({ application_id: appId, success: true, new_status: 'Rejected' });
+            }
+
+            await client.query('COMMIT');
+
+            const succeeded = results.filter(r => r.success).length;
+            return { results, total: applicationIds.length, succeeded, failed: results.length - succeeded };
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
+
     // ── MY CLIENTS — clients in the same department as the caller ─────────────
     async getClientsByDepartment(departmentId, filters = {}) {
         const client = await db.connect();

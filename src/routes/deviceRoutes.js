@@ -15,6 +15,10 @@ router.get('/devices/status/:status', deviceController.getDevicesByStatus);
 router.get('/devices/stats/summary', deviceController.getDeviceStatistics);
 router.get('/devices/:id',           deviceController.getDeviceById);
 
+// Inventory — Admin only
+router.get('/devices/inventory',       requireRoles('Admin'), deviceController.getInventory);
+router.patch('/devices/:id/stock',     requireRoles('Admin'), deviceController.updateStock);
+
 // Mutations — Admin only
 router.post('/devices',    requireRoles('Admin'), deviceController.createDevice);
 router.put('/devices/:id', requireRoles('Admin'), deviceController.updateDevice);

@@ -154,6 +154,30 @@ class DeviceController {
             });
         }
     };
+    // GET /api/devices/inventory
+    getInventory = async (req, res) => {
+        try {
+            const result = await this.deviceService.getInventory();
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    };
+
+    // PATCH /api/devices/:id/stock
+    updateStock = async (req, res) => {
+        try {
+            const { stock_quantity } = req.body;
+            const device = await this.deviceService.updateStock(
+                parseInt(req.params.id),
+                stock_quantity === undefined ? null : stock_quantity
+            );
+            res.json({ success: true, data: device });
+        } catch (error) {
+            const status = error.message.includes('not found') ? 404 : 400;
+            res.status(status).json({ success: false, message: error.message });
+        }
+    };
 }
 
 module.exports = DeviceController;

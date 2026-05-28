@@ -59,6 +59,13 @@ router.put(
     applicationController.cancelApplication
 );
 
+router.post(
+    '/users/:clientUserId/applications/:applicationId/resubmit',
+    requireRoles('Client'),
+    ownClientOnly,
+    applicationController.resubmitApplication
+);
+
 router.get(
     '/users/:clientUserId/eligibility',
     requireRoles('Client'),
