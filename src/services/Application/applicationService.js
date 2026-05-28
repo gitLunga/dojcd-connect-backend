@@ -1,6 +1,7 @@
 // services/applicationService.js
 const db = require('../../config/db');
 const NotificationService = require('../notificationService');
+const auditService        = require('../auditService');
 
 // ─── Utility: map raw errors to friendly messages ─────────────────────────────
 function friendlyError(error, context = 'operation') {
@@ -132,7 +133,17 @@ class ApplicationService {
             const application = result.rows[0];
             const applicationId = application.application_id;
 
-            // 5. Notify the client
+            // 5. Audit
+            await auditService.log(client, {
+                actorId:    clientUserId,
+                actorType:  'Client',
+                action:     'APPLICATION_SUBMITTED',
+                entityType: 'application',
+                entityId:   applicationId,
+                newValue:   { device_id: deviceId, status: 'Pending' },
+            });
+
+            // 6. Notify the client
             await NotificationService.createNotification(
                 clientUserId,
                 'Client',
@@ -140,7 +151,7 @@ class ApplicationService {
                 `Your application for the ${device.device_name} (${device.plan_name}) has been submitted successfully. We will review it and get back to you soon.`
             );
 
-            // 6. Notify Managers (Approver 1) — they review first
+            // 7. Notify Managers (Approver 1) — they review first
             const managersResult = await client.query(`
                 SELECT op_user_id FROM operational_user
                 WHERE user_role IN ('Manager', 'Admin')
@@ -234,6 +245,16 @@ class ApplicationService {
                 WHERE application_id = $1
                     RETURNING *
             `, [applicationId]);
+
+            await auditService.log(client, {
+                actorId:    clientUserId,
+                actorType:  'Client',
+                action:     'APPLICATION_CANCELLED',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: 'Pending' },
+                newValue:   { status: 'Cancelled' },
+            });
 
             await NotificationService.createNotification(
                 clientUserId,
@@ -530,6 +551,16 @@ class ApplicationService {
                 WHERE a.application_id = $1
             `, [applicationId]);
 
+            await auditService.log(client, {
+                actorId:    approverId || 0,
+                actorType:  'Operational',
+                action:     'APPLICATION_STATUS_UPDATED',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: currentStatus },
+                newValue:   { status: statusData.status, rejection_reason: statusData.rejection_reason || null },
+            });
+
             await client.query('COMMIT');
 
             const successMessages = {
@@ -753,7 +784,17 @@ class ApplicationService {
 
             const order = orderResult.rows[0];
 
-            // 5. Notify client
+            // 5. Audit
+            await auditService.log(client, {
+                actorId:    adminOpUserId,
+                actorType:  'Operational',
+                action:     'ORDER_PLACED',
+                entityType: 'order',
+                entityId:   order.order_id,
+                newValue:   { application_id: applicationId, order_status: 'Processing' },
+            });
+
+            // 6. Notify client
             await NotificationService.createNotification(
                 app.client_user_id,
                 'Client',

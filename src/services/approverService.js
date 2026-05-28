@@ -1,6 +1,7 @@
 // src/services/approverService.js
 const db = require('../config/db');
 const notificationService = require('./notificationService');
+const auditService        = require('./auditService');
 
 function friendlyError(error, context = 'operation') {
     const msg = error.message || '';
@@ -240,6 +241,16 @@ class ApproverService {
                 VALUES ($1, $2, 'Approved', 'manager', NOW(), $3)
             `, [applicationId, managerId, notes]);
 
+            await auditService.log(client, {
+                actorId:    managerId,
+                actorType:  'Operational',
+                action:     'APPLICATION_APPROVED_MANAGER',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: 'Pending' },
+                newValue:   { status: 'Pending_Finance', notes },
+            });
+
             await notificationService.createNotification(
                 app.client_user_id,
                 'Client',
@@ -318,6 +329,16 @@ class ApproverService {
                 (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
                 VALUES ($1, $2, 'Rejected', 'manager', NOW(), $3)
             `, [applicationId, managerId, rejectionReason.trim()]);
+
+            await auditService.log(client, {
+                actorId:    managerId,
+                actorType:  'Operational',
+                action:     'APPLICATION_REJECTED_MANAGER',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: 'Pending' },
+                newValue:   { status: 'Rejected', rejection_reason: rejectionReason.trim() },
+            });
 
             await notificationService.createNotification(
                 app.client_user_id,
@@ -459,6 +480,16 @@ class ApproverService {
                 VALUES ($1, $2, 'Approved', 'finance', NOW(), $3)
             `, [applicationId, financeUserId, notes]);
 
+            await auditService.log(client, {
+                actorId:    financeUserId,
+                actorType:  'Operational',
+                action:     'APPLICATION_APPROVED_FINANCE',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: 'Pending_Finance' },
+                newValue:   { status: 'Approved', notes },
+            });
+
             await notificationService.createNotification(
                 app.client_user_id,
                 'Client',
@@ -537,6 +568,16 @@ class ApproverService {
                 (application_id, approver_op_user_id, approval_status, approval_stage, approval_date, notes)
                 VALUES ($1, $2, 'Rejected', 'finance', NOW(), $3)
             `, [applicationId, financeUserId, rejectionReason.trim()]);
+
+            await auditService.log(client, {
+                actorId:    financeUserId,
+                actorType:  'Operational',
+                action:     'APPLICATION_REJECTED_FINANCE',
+                entityType: 'application',
+                entityId:   applicationId,
+                oldValue:   { status: 'Pending_Finance' },
+                newValue:   { status: 'Rejected', rejection_reason: rejectionReason.trim() },
+            });
 
             await notificationService.createNotification(
                 app.client_user_id,

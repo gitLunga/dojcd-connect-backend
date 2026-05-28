@@ -8,6 +8,7 @@ const applicationRoutes = require('./routes/Application/applicationRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
 const approverRoutes = require('./routes/approverRoutes');
+const auditRoutes    = require('./routes/auditRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -71,6 +72,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api', deviceRoutes);
 
 app.use('/api/approver', approverRoutes);
+app.use('/api/audit',   auditRoutes);
 
 app.get('/api/debug/pool', (req, res) => {
     const pool = require('./config/db');

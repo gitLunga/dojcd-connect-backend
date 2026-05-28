@@ -65,7 +65,7 @@ class AuthController {
 
     async registerOperational(req, res) {
         try {
-            const user = await authService.registerOperationalUser(req.body);
+            const user = await authService.registerOperationalUser(req.body, req.user?.userId);
             return res.status(201).json({
                 success: true,
                 message: 'Operational user registration successful',
@@ -84,7 +84,8 @@ class AuthController {
 
     async loginClient(req, res) {
         try {
-            const { user, accessToken, refreshToken } = await authService.loginClientUser(req.body);
+            const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+            const { user, accessToken, refreshToken } = await authService.loginClientUser(req.body, ip);
             return res.status(200).json({
                 success: true,
                 message: 'Login successful',
@@ -103,7 +104,8 @@ class AuthController {
 
     async loginOperational(req, res) {
         try {
-            const { user, accessToken, refreshToken } = await authService.loginOperationalUser(req.body);
+            const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+            const { user, accessToken, refreshToken } = await authService.loginOperationalUser(req.body, ip);
             return res.status(200).json({
                 success: true,
                 message: 'Operational user login successful',
@@ -122,7 +124,8 @@ class AuthController {
 
     async login(req, res) {
         try {
-            const { user, accessToken, refreshToken } = await authService.loginUser(req.body);
+            const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+            const { user, accessToken, refreshToken } = await authService.loginUser(req.body, ip);
             return res.status(200).json({
                 success: true,
                 message: 'Login successful',
