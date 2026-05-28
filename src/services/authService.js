@@ -2,7 +2,8 @@ const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const ClientUser = require('../models/ClientUser');
 const OperationalUser = require('../models/OperationalUser');
-const storage = require('../config/localStorage'); // ← local Storage (replaces local disk)
+const storage = require('../config/localStorage');
+const tokenService = require('./tokenService');
 
 class AuthService {
 
@@ -38,7 +39,10 @@ class AuthService {
         const userResponse = {...user};
         delete userResponse.password_hash;
 
-        return userResponse;
+        const accessToken  = tokenService.generateAccessToken(userResponse.client_user_id, 'Client');
+        const refreshToken = await tokenService.generateRefreshToken(userResponse.client_user_id, 'Client');
+
+        return { user: userResponse, accessToken, refreshToken };
     }
 
 
@@ -379,115 +383,99 @@ class AuthService {
     async loginClientUser(loginData) {
         const {email, password} = loginData;
 
-        // Find user by email
         const result = await db.query(
-            `SELECT *
-             FROM client_user
-             WHERE email = $1`,
+            `SELECT * FROM client_user WHERE email = $1`,
             [email]
         );
 
-        if (result.rows.length === 0) {
-            throw new Error('Invalid email or password');
-        }
+        if (result.rows.length === 0) throw new Error('Invalid email or password');
 
         const user = new ClientUser(result.rows[0]);
 
-        // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-        if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
-        }
+        if (!isPasswordValid) throw new Error('Invalid email or password');
 
-        // Remove password hash from response
         const userResponse = {...user};
         delete userResponse.password_hash;
 
-        return userResponse;
+        const accessToken  = tokenService.generateAccessToken(userResponse.client_user_id, 'Client');
+        const refreshToken = await tokenService.generateRefreshToken(userResponse.client_user_id, 'Client');
+
+        return { user: userResponse, accessToken, refreshToken };
     }
 
     // Login Operational User
     async loginOperationalUser(loginData) {
         const {email, password} = loginData;
 
-        // Find user by email
         const result = await db.query(
-            `SELECT *
-             FROM operational_user
-             WHERE email = $1`,
+            `SELECT * FROM operational_user WHERE email = $1 AND is_deleted = false`,
             [email]
         );
 
-        if (result.rows.length === 0) {
-            throw new Error('Invalid email or password');
-        }
+        if (result.rows.length === 0) throw new Error('Invalid email or password');
 
         const user = new OperationalUser(result.rows[0]);
 
-        // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-        if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
-        }
+        if (!isPasswordValid) throw new Error('Invalid email or password');
 
-        // Remove password hash from response
         const userResponse = {...user};
         delete userResponse.password_hash;
-
         userResponse.name = `${user.first_name} ${user.last_name}`.trim();
 
-        return userResponse;
+        const accessToken  = tokenService.generateAccessToken(userResponse.op_user_id, 'Operational', userResponse.user_role);
+        const refreshToken = await tokenService.generateRefreshToken(userResponse.op_user_id, 'Operational');
+
+        return { user: userResponse, accessToken, refreshToken };
     }
 
     // Generic login that tries both tables
     async loginUser(loginData) {
         const {email, password} = loginData;
 
-        // Try client_user first
         let result = await db.query(
-            `SELECT *, 'client' as user_type
-             FROM client_user
-             WHERE email = $1`,
+            `SELECT *, 'client' as table_type FROM client_user WHERE email = $1`,
             [email]
         );
 
-        // If not found in client_user, try operational_user
         if (result.rows.length === 0) {
             result = await db.query(
-                `SELECT *, 'operational' as user_type
-                 FROM operational_user
-                 WHERE email = $1`,
+                `SELECT *, 'operational' as table_type FROM operational_user WHERE email = $1 AND is_deleted = false`,
                 [email]
             );
         }
 
-        if (result.rows.length === 0) {
-            throw new Error('Invalid email or password');
-        }
+        if (result.rows.length === 0) throw new Error('Invalid email or password');
 
         const userData = result.rows[0];
         let user;
+        let userType;
+        let userId;
+        let role = null;
 
-        if (userData.user_type === 'client') {
+        if (userData.table_type === 'client') {
             user = new ClientUser(userData);
+            userType = 'Client';
+            userId = user.client_user_id;
         } else {
             user = new OperationalUser(userData);
+            userType = 'Operational';
+            userId = user.op_user_id;
+            role = user.user_role;
         }
 
-        // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-        if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
-        }
+        if (!isPasswordValid) throw new Error('Invalid email or password');
 
-        // Remove password hash from response
         const userResponse = {...user};
         delete userResponse.password_hash;
+        delete userResponse.table_type;
 
-        // Add user_type to response
-        userResponse.user_type = userData.user_type;
+        const accessToken  = tokenService.generateAccessToken(userId, userType, role);
+        const refreshToken = await tokenService.generateRefreshToken(userId, userType);
 
-        return userResponse;
+        return { user: userResponse, accessToken, refreshToken };
     }
 
 }

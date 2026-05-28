@@ -1,24 +1,19 @@
-const express = require('express');
-const router = express.Router();
-const notificationController = require('../controllers/notificationController');
+const express                  = require('express');
+const router                   = express.Router();
+const notificationController   = require('../controllers/notificationController');
+const authenticate             = require('../middleware/authenticate');
+const requireRoles             = require('../middleware/authorize');
 
-// Add this with your other routes
+router.use(authenticate);
 
-// Get notifications for a specific user
-router.get('/user', notificationController.getUserNotifications); // GET /api/notifications/user?user_id=1&user_type=Client
+// Any authenticated user can manage their own notifications
+router.get('/user',           notificationController.getUserNotifications);
+router.get('/unread-count',   notificationController.getUnreadCount);
+router.patch('/:id/read',     notificationController.markAsRead);
+router.patch('/mark-all-read', notificationController.markAllAsRead);
+router.delete('/:id',         notificationController.deleteNotification);
 
-// Get all notifications (Admin)
-router.get('/all', notificationController.getAllNotifications); // GET /api/notifications/all
+// Admin only — see all notifications across all users
+router.get('/all', requireRoles('Admin'), notificationController.getAllNotifications);
 
-// Get unread count
-router.get('/unread-count', notificationController.getUnreadCount); // GET /api/notifications/unread-count?user_id=1&user_type=Client
-
-// Mark notification as read
-router.patch('/:id/read', notificationController.markAsRead); // PATCH /api/notifications/1/read
-
-// Mark all as read for a user
-router.patch('/mark-all-read', notificationController.markAllAsRead); // PATCH /api/notifications/mark-all-read
-
-// Delete notification
-router.delete('/:id', notificationController.deleteNotification); // DELETE /api/notifications/1
 module.exports = router;

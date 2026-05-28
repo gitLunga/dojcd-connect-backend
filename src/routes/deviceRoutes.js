@@ -1,20 +1,23 @@
-// routes/deviceRoutes.js
-const express = require('express');
-const router = express.Router();
+const express        = require('express');
+const router         = express.Router();
 const DeviceController = require('../controllers/deviceController');
+const authenticate   = require('../middleware/authenticate');
+const requireRoles   = require('../middleware/authorize');
 
-// Initialize controller
 const deviceController = new DeviceController();
 
-// Device routes
-router.get('/devices', deviceController.getAllDevices);
-router.get('/devices/search', deviceController.searchDevices);
+router.use(authenticate);
+
+// Read-only — any authenticated user (clients browse, admins manage)
+router.get('/devices',               deviceController.getAllDevices);
+router.get('/devices/search',        deviceController.searchDevices);
 router.get('/devices/status/:status', deviceController.getDevicesByStatus);
 router.get('/devices/stats/summary', deviceController.getDeviceStatistics);
-router.get('/devices/:id', deviceController.getDeviceById);
+router.get('/devices/:id',           deviceController.getDeviceById);
 
-router.post('/devices', deviceController.createDevice);
-router.put('/devices/:id', deviceController.updateDevice);
-router.delete('/devices/:id', deviceController.deleteDevice);
+// Mutations — Admin only
+router.post('/devices',    requireRoles('Admin'), deviceController.createDevice);
+router.put('/devices/:id', requireRoles('Admin'), deviceController.updateDevice);
+router.delete('/devices/:id', requireRoles('Admin'), deviceController.deleteDevice);
 
 module.exports = router;
