@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const notificationService = require('./notificationService');
 const auditService        = require('./auditService');
+const SLA                 = require('../config/slaConfig');
 
 function friendlyError(error, context = 'operation') {
     const msg = error.message || '';
@@ -182,14 +183,30 @@ class ApproverService {
                        d.contract_duration_months,
                        ROUND(
                                EXTRACT(EPOCH FROM (NOW() - a.submission_date)) / 86400
-                       ) ::int              AS days_waiting
+                       )::int                                                    AS days_waiting,
+                       $${idx}::int                                              AS sla_days,
+                       CASE
+                           WHEN EXTRACT(EPOCH FROM (NOW() - a.submission_date)) / 86400 > $${idx}
+                               THEN 'breached'
+                           WHEN EXTRACT(EPOCH FROM (NOW() - a.submission_date)) / 86400 > $${idx} * 0.8
+                               THEN 'approaching'
+                           ELSE 'within'
+                       END                                                       AS sla_status,
+                       LEAST(
+                           ROUND(
+                               EXTRACT(EPOCH FROM (NOW() - a.submission_date)) / 86400
+                               / NULLIF($${idx}, 0) * 100
+                           )::int,
+                           999
+                       )                                                         AS sla_percent_used
                 FROM application a
                          JOIN client_user cu ON a.client_user_id = cu.client_user_id
                          JOIN device_catalog d ON a.device_id = d.device_id
                 WHERE ${clauses.join(' AND ')}
-                ORDER BY a.submission_date ASC LIMIT $${idx++}
-                OFFSET $${idx++}
-            `, [...params, limit, offset]);
+                ORDER BY a.submission_date ASC LIMIT $${idx + 1}
+                OFFSET $${idx + 2}
+            `, [...params, SLA.Pending.sla_days, limit, offset]);
+            idx += 3;
 
             const countResult = await client.query(`
                 SELECT COUNT(*) AS total
@@ -414,11 +431,29 @@ class ApproverService {
                        d.monthly_cost,
                        d.contract_duration_months,
                        ROUND((d.monthly_cost * d.contract_duration_months):: numeric, 2) AS total_contract_value,
+                       ap_mgr.notes                                                      AS manager_notes,
+                       mgr.first_name                                                     AS manager_first_name,
+                       mgr.last_name                                                      AS manager_last_name,
+                       ap_mgr.approval_date                                               AS manager_approval_date,
+                       -- Finance SLA measured from when manager approved, not submission date
                        ROUND(
-                               EXTRACT(EPOCH FROM (NOW() - a.submission_date)) / 86400
-                       )::int              AS days_waiting, ap_mgr.notes AS manager_notes,
-                       mgr.first_name                                                    AS manager_first_name,
-                       mgr.last_name                                                     AS manager_last_name
+                           EXTRACT(EPOCH FROM (NOW() - COALESCE(ap_mgr.approval_date, a.submission_date))) / 86400
+                       )::int                                                             AS days_waiting,
+                       $${idx}::int                                                       AS sla_days,
+                       CASE
+                           WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(ap_mgr.approval_date, a.submission_date))) / 86400 > $${idx}
+                               THEN 'breached'
+                           WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(ap_mgr.approval_date, a.submission_date))) / 86400 > $${idx} * 0.8
+                               THEN 'approaching'
+                           ELSE 'within'
+                       END                                                                AS sla_status,
+                       LEAST(
+                           ROUND(
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(ap_mgr.approval_date, a.submission_date))) / 86400
+                               / NULLIF($${idx}, 0) * 100
+                           )::int,
+                           999
+                       )                                                                  AS sla_percent_used
                 FROM application a
                          JOIN client_user cu ON a.client_user_id = cu.client_user_id
                          JOIN device_catalog d ON a.device_id = d.device_id
@@ -426,9 +461,10 @@ class ApproverService {
                     AND ap_mgr.approval_stage = 'manager'
                          LEFT JOIN operational_user mgr ON ap_mgr.approver_op_user_id = mgr.op_user_id
                 WHERE ${clauses.join(' AND ')}
-                ORDER BY a.submission_date ASC LIMIT $${idx++}
-                OFFSET $${idx++}
-            `, [...params, limit, offset]);
+                ORDER BY a.submission_date ASC LIMIT $${idx + 1}
+                OFFSET $${idx + 2}
+            `, [...params, SLA.Pending_Finance.sla_days, limit, offset]);
+            idx += 3;
 
             const countResult = await client.query(`
                 SELECT COUNT(*) AS total

@@ -9,6 +9,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
 const approverRoutes = require('./routes/approverRoutes');
 const auditRoutes    = require('./routes/auditRoutes');
+const slaRoutes      = require('./routes/slaRoutes');
 
 require("./config/db"); // Initialize DB connection
 
@@ -73,6 +74,7 @@ app.use('/api', deviceRoutes);
 
 app.use('/api/approver', approverRoutes);
 app.use('/api/audit',   auditRoutes);
+app.use('/api/sla',     slaRoutes);
 
 app.get('/api/debug/pool', (req, res) => {
     const pool = require('./config/db');
