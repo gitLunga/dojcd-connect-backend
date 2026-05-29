@@ -171,12 +171,12 @@ async function saveReportRecord(client, { reportName, csvContent, adminUserId })
     );
 
     const result = await client.query(
-        `INSERT INTO report (report_name, s3_path, admin_op_user_id)
+        `INSERT INTO report (report_name, file_path, admin_op_user_id)
          VALUES ($1, $2, $3) RETURNING report_id, generated_date`,
         [reportName, savedPath, adminUserId]
     );
 
-    return { ...result.rows[0], s3_path: savedPath };
+    return { ...result.rows[0], file_path: savedPath };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ async function getReportHistory(filters = {}) {
     const offset = parseInt(filters.offset || 0);
 
     const result = await db.query(`
-        SELECT r.report_id, r.report_name, r.generated_date, r.s3_path,
+        SELECT r.report_id, r.report_name, r.generated_date, r.file_path,
                ou.first_name || ' ' || ou.last_name AS generated_by,
                ou.email AS generated_by_email
         FROM report r

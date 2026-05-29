@@ -800,7 +800,7 @@ class AdminService {
             const documentsResult = await db.query(
                 `SELECT document_id,
                         document_type,
-                        s3_path,
+                        file_path,
                         upload_date,
                         document_status,
                         application_id,
@@ -820,7 +820,7 @@ class AdminService {
                  -- Get invoice as a document
                  SELECT -1           as document_id,
                         'Invoice'    as document_type,
-                        invoice_path as s3_path,
+                        invoice_path as file_path,
                         created_at   as upload_date,
                         'Verified'   as document_status,
                         NULL         as application_id,
@@ -842,13 +842,13 @@ class AdminService {
                 document_id: doc.document_id,
                 document_type: doc.document_type,
                 is_invoice: doc.is_invoice,
-                file_name: path.basename(doc.s3_path),
-                file_exists: !!doc.s3_path,
+                file_name: path.basename(doc.file_path),
+                file_exists: !!doc.file_path,
                 file_size: null,
                 upload_date: doc.upload_date,
                 document_status: doc.document_status,
                 application_id: doc.application_id,
-                mime_type: storage.getMimeFromPath(doc.s3_path),
+                mime_type: storage.getMimeFromPath(doc.file_path),
             }));
 
             return documents;
@@ -869,7 +869,7 @@ class AdminService {
             if (documentId < 0) {
                 // This is an invoice - get from client_user table
                 query = `
-                    SELECT invoice_path as s3_path,
+                    SELECT invoice_path as file_path,
                            'Invoice'    as document_type,
                            'Verified'   as document_status,
                            first_name,
@@ -882,7 +882,7 @@ class AdminService {
             } else {
                 // Regular document
                 query = `
-                    SELECT d.s3_path,
+                    SELECT d.file_path,
                            d.document_type,
                            d.document_status,
                            cu.first_name,
@@ -902,17 +902,17 @@ class AdminService {
 
             const doc = result.rows[0];
 
-            if (!doc.s3_path) throw new Error('Document file path missing in database');
+            if (!doc.file_path) throw new Error('Document file path missing in database');
 
-            const {buffer, contentType} = await storage.downloadFile(doc.s3_path);
+            const {buffer, contentType} = await storage.downloadFile(doc.file_path);
 
-            const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}${path.extname(doc.s3_path)}`
+            const safeFileName = `${doc.document_type}_${doc.first_name || 'user'}_${doc.last_name || 'user'}${path.extname(doc.file_path)}`
                 .replace(/[^a-zA-Z0-9._-]/g, '_');
 
             return {
                 buffer,
                 fileName: safeFileName,
-                mimeType: contentType || storage.getMimeFromPath(doc.s3_path),
+                mimeType: contentType || storage.getMimeFromPath(doc.file_path),
                 documentType: doc.document_type,
                 documentStatus: doc.document_status,
             };
@@ -971,19 +971,19 @@ class AdminService {
     async getDocumentSignedUrl(documentId) {
         let query, params;
         if (documentId < 0) {
-            query = `SELECT invoice_path AS s3_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`;
+            query = `SELECT invoice_path AS file_path FROM client_user WHERE client_user_id = $1 AND invoice_path IS NOT NULL`;
             params = [Math.abs(documentId)];
         } else {
-            query = `SELECT s3_path FROM document WHERE document_id = $1`;
+            query = `SELECT file_path FROM document WHERE document_id = $1`;
             params = [documentId];
         }
 
         const result = await db.query(query, params);
-        if (result.rows.length === 0 || !result.rows[0].s3_path) {
+        if (result.rows.length === 0 || !result.rows[0].file_path) {
             throw new Error('Document not found');
         }
 
-        const rawPath = result.rows[0].s3_path;
+        const rawPath = result.rows[0].file_path;
         console.log(`📄 Document path from DB: ${rawPath}`);
 
         // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/

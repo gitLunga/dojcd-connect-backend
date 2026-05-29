@@ -118,9 +118,9 @@ class AuthService {
                 uploadedPaths.push(savedPath);
 
                 const docResult = await client.query(
-                    `INSERT INTO document (client_user_id, document_type, s3_path, document_status, upload_date)
+                    `INSERT INTO document (client_user_id, document_type, file_path, document_status, upload_date)
                      VALUES ($1,$2,$3,'Pending',CURRENT_TIMESTAMP)
-                     RETURNING document_id, document_type, s3_path, upload_date`,
+                     RETURNING document_id, document_type, file_path, upload_date`,
                     [clientUserId, def.type, savedPath]
                 );
                 if (docResult.rows.length === 0) throw new Error(`Failed to insert ${def.type} record`);
