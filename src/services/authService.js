@@ -447,7 +447,7 @@ class AuthService {
             await client.query('BEGIN');
 
             const newHash = await bcrypt.hash(newPassword, 10);
-            let userId;
+            let userId, firstName;
 
             if (stored.user_type === 'Client') {
                 const r = await client.query(
@@ -456,7 +456,8 @@ class AuthService {
                     [newHash, stored.email]
                 );
                 if (r.rows.length === 0) throw new Error('User not found.');
-                userId = r.rows[0].id;
+                userId    = r.rows[0].id;
+                firstName = r.rows[0].first_name;
             } else {
                 const r = await client.query(
                     `UPDATE operational_user
@@ -466,7 +467,8 @@ class AuthService {
                     [newHash, stored.email]
                 );
                 if (r.rows.length === 0) throw new Error('User not found.');
-                userId = r.rows[0].id;
+                userId    = r.rows[0].id;
+                firstName = r.rows[0].first_name;
             }
 
             await client.query(
@@ -481,7 +483,7 @@ class AuthService {
 
             await client.query('COMMIT');
 
-            emailService.sendPasswordChanged(stored.email, stored.email).catch(() => {});
+            emailService.sendPasswordChanged(stored.email, firstName).catch(() => {});
 
             return { success: true, message: 'Password reset successfully. You can now log in.' };
         } catch (err) {

@@ -848,7 +848,8 @@ class ApplicationService {
                     d.device_name,
                     d.plan_name,
                     cu.first_name AS client_first_name,
-                    cu.last_name  AS client_last_name
+                    cu.last_name  AS client_last_name,
+                    cu.email      AS client_email
                 FROM application a
                 JOIN device_catalog d ON a.device_id = d.device_id
                 JOIN client_user cu   ON a.client_user_id = cu.client_user_id
@@ -913,7 +914,7 @@ class ApplicationService {
             await client.query('COMMIT');
 
             emailService.sendOrderPlaced(
-                app.client_user_id, app.client_first_name, app.device_name, order.order_id
+                app.client_email, app.client_first_name, app.device_name, order.order_id
             ).catch(() => {});
 
             return {

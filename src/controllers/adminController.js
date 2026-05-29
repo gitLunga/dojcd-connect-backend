@@ -257,39 +257,22 @@ class AdminController {
     }
 
     // Get recent registrations
-    async getRecentRegistrations() {
+    async getRecentRegistrations(req, res) {
         try {
-            const result = await db.query(
-                `SELECT * FROM (
-                SELECT 'client'       as user_type,
-                        client_user_id as id,
-                        first_name,
-                        last_name,
-                        email,
-                        registration_status,
-                        created_at
-                 FROM client_user
-                 WHERE created_at >= NOW() - INTERVAL '7 days'
-
-                 UNION ALL
-
-                SELECT 'operational' as user_type,
-                       op_user_id    as id,
-                       first_name,
-                       last_name,
-                       email,
-                       'Verified'    as registration_status,
-                       created_at
-                FROM operational_user
-                WHERE created_at >= NOW() - INTERVAL '7 days'
-            ) combined
-            ORDER BY created_at DESC
-            LIMIT 20`
-            );
-
-            return result.rows;
+            const registrations = await adminService.getRecentRegistrations();
+            res.status(200).json({
+                success: true,
+                message: 'Recent registrations retrieved successfully',
+                data: { registrations },
+                timestamp: new Date().toISOString()
+            });
         } catch (error) {
-            throw new Error(`Error fetching recent registrations: ${error.message}`);
+            res.status(500).json({
+                success: false,
+                message: error.message,
+                data: null,
+                timestamp: new Date().toISOString()
+            });
         }
     }
     
