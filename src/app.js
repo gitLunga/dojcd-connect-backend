@@ -32,6 +32,9 @@ allowedHeaders: ["Content-Type", "Authorization"],
 
 const storage = require('./config/localStorage');
 
+// Remove leftover temp files older than 24 h on every startup
+storage.cleanTempFiles(24);
+
 // Serve local files in dev (no-op in production since router only used locally)
 const uploadsDir = path.join(__dirname, 'uploads');
 console.log(`📁 Serving static files from: ${uploadsDir}`);

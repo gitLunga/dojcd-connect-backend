@@ -52,6 +52,30 @@ async function deleteFile(storagePath) {
     }
 }
 
+// ── cleanTempFiles ────────────────────────────────────────────────────────────
+// Deletes files in src/uploads/temp/ older than maxAgeHours (default 24 h).
+// Safe to call at startup — silently skips if the folder does not exist.
+function cleanTempFiles(maxAgeHours = 24) {
+    const tempDir = path.join(LOCAL_ROOT, 'temp');
+    if (!fs.existsSync(tempDir)) return;
+
+    const cutoff = Date.now() - maxAgeHours * 60 * 60 * 1000;
+    let removed = 0;
+
+    for (const name of fs.readdirSync(tempDir)) {
+        const filePath = path.join(tempDir, name);
+        try {
+            const stat = fs.statSync(filePath);
+            if (stat.isFile() && stat.mtimeMs < cutoff) {
+                fs.unlinkSync(filePath);
+                removed++;
+            }
+        } catch (_) {}
+    }
+
+    if (removed > 0) console.log(`🧹 Cleaned ${removed} stale file(s) from uploads/temp/`);
+}
+
 // ── localFileRouter ───────────────────────────────────────────────────────────
 const express = require('express');
 const localFileRouter = express.Router();
@@ -159,4 +183,4 @@ function getMimeFromPath(filePath) {
     return map[ext] || 'application/octet-stream';
 }
 
-module.exports = { uploadFile, downloadFile, getSignedUrl, deleteFile, getMimeFromPath, localFileRouter };
+module.exports = { uploadFile, downloadFile, getSignedUrl, deleteFile, cleanTempFiles, getMimeFromPath, localFileRouter };
