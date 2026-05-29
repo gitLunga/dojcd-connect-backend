@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Uploaded user files — binary blobs, not source code
+src/uploads/
+uploads/
+
+# Logs
+*.log
+logs/
+server-error.log
+
+# Editor / OS
+.idea/
+.vscode/
+*.save
+.DS_Store
+Thumbs.db
+
+# Build artefacts
+dist/
+build/
