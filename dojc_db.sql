@@ -52,6 +52,7 @@ CREATE TABLE device_catalog (
     contract_duration_months INTEGER NOT NULL,
     status                   VARCHAR(50) NOT NULL
         CHECK (status IN ('active', 'inactive', 'discontinued')),
+    stock_quantity           INTEGER CHECK (stock_quantity >= 0),
     created_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -103,9 +104,10 @@ CREATE TABLE application (
         CHECK (application_status IN (
             'Pending', 'Pending_Finance', 'Approved', 'Rejected', 'Cancelled'
         )),
-    submission_date    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_updated       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    rejection_reason   TEXT,
+    submission_date         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_updated            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    rejection_reason        TEXT,
+    parent_application_id  INTEGER,
 
     CONSTRAINT fk_application_client
         FOREIGN KEY (client_user_id) REFERENCES client_user (client_user_id)
@@ -113,8 +115,16 @@ CREATE TABLE application (
 
     CONSTRAINT fk_application_device
         FOREIGN KEY (device_id) REFERENCES device_catalog (device_id)
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_application_parent
+        FOREIGN KEY (parent_application_id) REFERENCES application (application_id)
+        ON DELETE SET NULL
 );
+
+CREATE INDEX idx_application_parent
+    ON application (parent_application_id)
+    WHERE parent_application_id IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
 -- 5. NOTIFICATION
@@ -143,7 +153,7 @@ CREATE TABLE document (
     client_user_id     INTEGER NOT NULL,
     document_type      VARCHAR(50) NOT NULL
         CHECK (document_type IN ('Payslip', 'ID', 'Proof_of_Residence')),
-    s3_path            VARCHAR(255) NOT NULL,
+    file_path          VARCHAR(255) NOT NULL,
     upload_date        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     document_status    VARCHAR(20) NOT NULL DEFAULT 'Pending'
         CHECK (document_status IN ('Pending', 'Approved', 'Rejected', 'Verified')),
@@ -221,7 +231,7 @@ CREATE TABLE report (
     report_id        SERIAL PRIMARY KEY,
     report_name      VARCHAR(255) NOT NULL,
     generated_date   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    s3_path          VARCHAR(255) NOT NULL,
+    file_path        VARCHAR(255) NOT NULL,
     admin_op_user_id INTEGER NOT NULL,
 
     CONSTRAINT fk_report_admin
@@ -324,11 +334,7 @@ CREATE INDEX idx_refresh_token_user ON refresh_token (user_id, user_type);
 CREATE INDEX idx_refresh_token_hash ON refresh_token (token_hash);
 
 -- -----------------------------------------------------------------------------
--- 14. LOGIN_ATTEMPT
---     Every login attempt is recorded for brute-force detection and compliance.
--- -----------------------------------------------------------------------------
--- -----------------------------------------------------------------------------
--- 15. PASSWORD_RESET_TOKEN
+-- 14. PASSWORD_RESET_TOKEN
 -- -----------------------------------------------------------------------------
 CREATE TABLE password_reset_token (
     token_id   SERIAL PRIMARY KEY,
@@ -345,7 +351,7 @@ CREATE INDEX idx_prt_email ON password_reset_token (email, created_at DESC);
 CREATE INDEX idx_prt_hash  ON password_reset_token (token_hash);
 
 -- -----------------------------------------------------------------------------
--- 16. LOGIN_ATTEMPT
+-- 15. LOGIN_ATTEMPT
 -- -----------------------------------------------------------------------------
 CREATE TABLE login_attempt (
     attempt_id BIGSERIAL PRIMARY KEY,

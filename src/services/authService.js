@@ -174,8 +174,8 @@ class AuthService {
 
             const result = await client.query(
                 `INSERT INTO operational_user
-                     (title, first_name, last_name, email, user_role, department_id, password_hash)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+                     (title, first_name, last_name, email, user_role, department_id, password_hash, must_change_password)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7, false) RETURNING *`,
                 [title, first_name, last_name, email, user_role, department_id || null, hashedPassword]
             );
             if (result.rows.length === 0) throw new Error('Operational user registration failed');

@@ -21,7 +21,8 @@ app.use(cors({
     origin: [
         "https://admin.malcam.co.za",
         "https://client.malcam.co.za",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "http://localhost:3001",
     ],
     // Allow all origins for development
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
