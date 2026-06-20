@@ -57,13 +57,8 @@ router.post(
     (req, res) => authController.completeProfile(req, res)
 );
 
-// Register a new operational user — Admin only
-router.post(
-    '/register-operational',
-    authenticate,
-    requireRoles('Admin'),
-    (req, res) => authController.registerOperational(req, res)
-);
+// Register a new operational user — public
+router.post('/register-operational', (req, res) => authController.registerOperational(req, res));
 
 // Change password — any authenticated user
 router.post('/change-password', authenticate, (req, res) => authController.changePassword(req, res));
