@@ -200,11 +200,8 @@ class AdminController {
             const {status, notes} = req.body;
 
 
-            const normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-
-            // Validate status
             const validStatuses = ['Pending', 'Verified', 'Rejected', 'Profile_Completed'];
-            if (!validStatuses.includes(normalizedStatus)) {
+            if (!validStatuses.includes(status)) {
                 return res.status(400).json({
                     success: false,
                     message: `Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`,
@@ -214,7 +211,7 @@ class AdminController {
             }
 
 
-            const updatedUser = await adminService.updateUserRegistrationStatus(id, normalizedStatus, notes);
+            const updatedUser = await adminService.updateUserRegistrationStatus(id, status, notes);
 
             res.status(200).json({
                 success: true,

@@ -10,51 +10,51 @@ router.use(authenticate);
 // ── My department's clients ───────────────────────────────────────────────────
 router.get(
     '/my-clients',
-    requireRoles('Manager', 'Finance', 'Admin'),
+    requireRoles('Manager', 'Approver', 'Finance', 'Admin'),
     (req, res) => approverController.getMyClients(req, res)
 );
 
-// ── Shared (Manager + Finance + Admin) ────────────────────────────────────────
+// ── Shared (Manager + Approver + Finance + Admin) ─────────────────────────────
 router.get(
     '/applications/:id',
-    requireRoles('Manager', 'Finance', 'Admin'),
+    requireRoles('Manager', 'Approver', 'Finance', 'Admin'),
     (req, res) => approverController.getApplicationDetail(req, res)
 );
 
 router.get(
     '/applications/:id/history',
-    requireRoles('Manager', 'Finance', 'Admin'),
+    requireRoles('Manager', 'Approver', 'Finance', 'Admin'),
     (req, res) => approverController.getApplicationHistory(req, res)
 );
 
 // ── Manager (Approver 1) ──────────────────────────────────────────────────────
 router.get(
     '/manager/queue',
-    requireRoles('Manager', 'Admin'),
+    requireRoles('Manager', 'Approver', 'Admin'),
     (req, res) => approverController.getManagerQueue(req, res)
 );
 
 router.get(
     '/manager/stats',
-    requireRoles('Manager', 'Admin'),
+    requireRoles('Manager', 'Approver', 'Admin'),
     (req, res) => approverController.getManagerStats(req, res)
 );
 
 router.post(
     '/manager/applications/:id/approve',
-    requireRoles('Manager'),
+    requireRoles('Manager', 'Approver'),
     (req, res) => approverController.managerApprove(req, res)
 );
 
 router.post(
     '/manager/applications/:id/reject',
-    requireRoles('Manager'),
+    requireRoles('Manager', 'Approver'),
     (req, res) => approverController.managerReject(req, res)
 );
 
 // ── Manager bulk actions ──────────────────────────────────────────────────────
-router.post('/manager/bulk-approve', requireRoles('Manager'), (req, res) => approverController.bulkManagerApprove(req, res));
-router.post('/manager/bulk-reject',  requireRoles('Manager'), (req, res) => approverController.bulkManagerReject(req, res));
+router.post('/manager/bulk-approve', requireRoles('Manager', 'Approver'), (req, res) => approverController.bulkManagerApprove(req, res));
+router.post('/manager/bulk-reject',  requireRoles('Manager', 'Approver'), (req, res) => approverController.bulkManagerReject(req, res));
 
 // ── Finance (Approver 2) ──────────────────────────────────────────────────────
 router.get(

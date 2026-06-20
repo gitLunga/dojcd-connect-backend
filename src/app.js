@@ -41,7 +41,6 @@ const uploadsDir = path.join(__dirname, 'uploads');
 console.log(`📁 Serving static files from: ${uploadsDir}`);
 
 app.use('/api/files', storage.localFileRouter);
-app.use('/uploads', express.static(uploadsDir));
 
 // Body Parser
 app.use(express.json({limit: '50mb'})); // Increase from default 100kb to 50MB

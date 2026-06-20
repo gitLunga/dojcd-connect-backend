@@ -66,7 +66,7 @@ class ApplicationService {
             const result = await db.query(`
                 SELECT device_id, device_name, model, manufacturer,
                        plan_name, plan_details, monthly_cost,
-                       contract_duration_months, status
+                       contract_duration_months, status, stock_quantity
                 FROM device_catalog
                 WHERE status = 'active'
                 ORDER BY monthly_cost
@@ -697,11 +697,6 @@ class ApplicationService {
                     cu.client_user_id, cu.title as user_title, cu.first_name, cu.last_name,
                     cu.email, cu.phone_number, cu.region, cu.persal_id,
                     cu.department_id, cu.user_type, cu.registration_status,
-                    ap.approval_id, ap.approval_status, ap.approval_date,
-                    ap.notes as approval_notes,
-                    approver.first_name as approver_first_name,
-                    approver.last_name as approver_last_name,
-                    approver.email as approver_email,
                     o.order_id, o.order_status, o.order_date,
                     mtn_staff.first_name as mtn_staff_first_name,
                     mtn_staff.last_name as mtn_staff_last_name,
@@ -710,8 +705,6 @@ class ApplicationService {
                 FROM application a
                          JOIN device_catalog d ON a.device_id = d.device_id
                          JOIN client_user cu ON a.client_user_id = cu.client_user_id
-                         LEFT JOIN approval ap ON a.application_id = ap.application_id
-                         LEFT JOIN operational_user approver ON ap.approver_op_user_id = approver.op_user_id
                          LEFT JOIN "order" o ON a.application_id = o.application_id
                          LEFT JOIN operational_user mtn_staff ON o.mtn_staff_op_user_id = mtn_staff.op_user_id
                          LEFT JOIN delivery del ON o.order_id = del.order_id
@@ -722,14 +715,29 @@ class ApplicationService {
                 throw new Error('Application not found.');
             }
 
-            const documents = await db.query(`
-                SELECT document_id, document_type, upload_date
-                FROM document WHERE application_id = $1
-                ORDER BY upload_date DESC
-            `, [applicationId]);
+            const [documents, approvals] = await Promise.all([
+                db.query(`
+                    SELECT document_id, document_type, upload_date
+                    FROM document WHERE application_id = $1
+                    ORDER BY upload_date DESC
+                `, [applicationId]),
+                db.query(`
+                    SELECT
+                        ap.approval_id, ap.approval_stage, ap.approval_status,
+                        ap.approval_date, ap.notes,
+                        ou.first_name as approver_first_name,
+                        ou.last_name  as approver_last_name,
+                        ou.user_role  as approver_role
+                    FROM approval ap
+                    JOIN operational_user ou ON ap.approver_op_user_id = ou.op_user_id
+                    WHERE ap.application_id = $1
+                    ORDER BY ap.approval_date ASC
+                `, [applicationId]),
+            ]);
 
             const application = result.rows[0];
-            application.documents = documents.rows;
+            application.documents       = documents.rows;
+            application.approval_history = approvals.rows;
 
             return application;
         } catch (error) {
@@ -867,6 +875,21 @@ class ApplicationService {
                 return {
                     success: false,
                     message: `This application cannot be ordered — current status is "${app.application_status}". Only fully approved applications can have an order placed.`
+                };
+            }
+
+            // 2b. Guard: both Manager AND Finance approvals must exist
+            const approvalCheck = await client.query(`
+                SELECT approval_stage FROM approval
+                WHERE application_id = $1 AND approval_status = 'Approved'
+            `, [applicationId]);
+
+            const stages = approvalCheck.rows.map(r => r.approval_stage);
+            if (!stages.includes('manager') || !stages.includes('finance')) {
+                const missing = !stages.includes('manager') ? 'Manager' : 'Finance';
+                return {
+                    success: false,
+                    message: `Cannot place order: ${missing} approval record is missing. Both Manager and Finance approvals are required.`
                 };
             }
 

@@ -46,11 +46,9 @@ class ApproverController {
                 offset:        req.query.offset,
             };
 
-            // Managers are always scoped to their own department
+            // Scope to the Manager's department when one is assigned; otherwise show all
             if (req.user.role === 'Manager' && req.user.departmentId) {
                 filters.department_id = req.user.departmentId;
-            } else if (req.user.role === 'Manager' && !req.user.departmentId) {
-                return fail(res, 'Your account has no department assigned. Contact an Admin.', 403);
             }
 
             const result = await approverService.getManagerQueue(filters);
@@ -186,11 +184,9 @@ class ApproverController {
                 offset:        req.query.offset,
             };
 
-            // Finance users are always scoped to their own department
+            // Scope to the Finance user's department when one is assigned; otherwise show all
             if (req.user.role === 'Finance' && req.user.departmentId) {
                 filters.department_id = req.user.departmentId;
-            } else if (req.user.role === 'Finance' && !req.user.departmentId) {
-                return fail(res, 'Your account has no department assigned. Contact an Admin.', 403);
             }
 
             const result = await approverService.getFinanceQueue(filters);
