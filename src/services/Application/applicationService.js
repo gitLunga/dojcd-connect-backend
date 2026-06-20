@@ -373,12 +373,10 @@ class ApplicationService {
                     cu.first_name, cu.last_name, cu.email, cu.phone_number,
                     cu.region, cu.persal_id, cu.registration_status,
                     cu.user_type, cu.department_id,
-                    ap.approval_status, ap.approver_op_user_id, ap.approval_date,
-                    o.order_status, o.order_date
+                    o.order_id, o.order_status, o.order_date
                 FROM application a
                          JOIN device_catalog d ON a.device_id = d.device_id
                          JOIN client_user cu ON a.client_user_id = cu.client_user_id
-                         LEFT JOIN approval ap ON a.application_id = ap.application_id
                          LEFT JOIN "order" o ON a.application_id = o.application_id
                 WHERE 1=1
             `;
