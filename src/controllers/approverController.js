@@ -46,8 +46,8 @@ class ApproverController {
                 offset:        req.query.offset,
             };
 
-            // Scope to the Manager's department when one is assigned; otherwise show all
-            if (req.user.role === 'Manager' && req.user.departmentId) {
+            // Scope to the Manager's own department unless they have global access
+            if (req.user.role === 'Manager' && req.user.departmentId && !req.user.hasGlobalAccess) {
                 filters.department_id = req.user.departmentId;
             }
 
@@ -184,8 +184,8 @@ class ApproverController {
                 offset:        req.query.offset,
             };
 
-            // Scope to the Finance user's department when one is assigned; otherwise show all
-            if (req.user.role === 'Finance' && req.user.departmentId) {
+            // Scope to the Finance user's own department unless they have global access
+            if (req.user.role === 'Finance' && req.user.departmentId && !req.user.hasGlobalAccess) {
                 filters.department_id = req.user.departmentId;
             }
 

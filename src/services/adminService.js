@@ -181,8 +181,11 @@ class AdminService {
                         last_name,
                         email,
                         user_role,
-                        is_super_admin
+                        department_id,
+                        is_super_admin,
+                        has_global_access
                  FROM operational_user
+                 WHERE is_deleted = false
                  ORDER BY created_at DESC`,
                 []
             );
@@ -1213,8 +1216,101 @@ class AdminService {
         }
     }
 
+    async getSystemOverview() {
+        const [usersResult, clientResult, appResult, auditResult] = await Promise.all([
+            db.query(`
+                SELECT user_role, COUNT(*) AS count,
+                       COUNT(*) FILTER (WHERE is_super_admin) AS super_admins
+                FROM operational_user
+                WHERE is_deleted = false
+                GROUP BY user_role
+                ORDER BY user_role`),
+            db.query(`
+                SELECT registration_status, COUNT(*) AS count
+                FROM client_user
+                GROUP BY registration_status`),
+            db.query(`
+                SELECT application_status, COUNT(*) AS count
+                FROM application
+                GROUP BY application_status`),
+            db.query(`
+                SELECT action, COUNT(*) AS count
+                FROM audit_log
+                WHERE created_at >= NOW() - INTERVAL '30 days'
+                GROUP BY action
+                ORDER BY count DESC
+                LIMIT 8`),
+        ]);
 
+        const opTotal     = usersResult.rows.reduce((s, r) => s + parseInt(r.count), 0);
+        const clientTotal = clientResult.rows.reduce((s, r) => s + parseInt(r.count), 0);
+        const appTotal    = appResult.rows.reduce((s, r) => s + parseInt(r.count), 0);
 
+        return {
+            operational_users: {
+                total: opTotal,
+                by_role: usersResult.rows,
+            },
+            client_users: {
+                total: clientTotal,
+                by_status: clientResult.rows,
+            },
+            applications: {
+                total: appTotal,
+                by_status: appResult.rows,
+            },
+            recent_activity: auditResult.rows,
+        };
+    }
+
+    // ── DEPARTMENTS ───────────────────────────────────────────────────────────────
+
+    async getDepartments() {
+        const result = await db.query(
+            `SELECT id, name, code, created_at FROM department ORDER BY name ASC`
+        );
+        return result.rows;
+    }
+
+    async createDepartment(name, code = null) {
+        if (!name?.trim()) throw new Error('Department name is required.');
+        const result = await db.query(
+            `INSERT INTO department (name, code) VALUES ($1, $2)
+             ON CONFLICT (name) DO NOTHING
+             RETURNING id, name, code, created_at`,
+            [name.trim(), code?.trim() || null]
+        );
+        if (result.rows.length === 0) throw new Error('A department with this name already exists.');
+        return result.rows[0];
+    }
+
+    async deleteDepartment(id) {
+        const inUse = await db.query(
+            `SELECT 1 FROM operational_user WHERE department_id = (SELECT name FROM department WHERE id = $1) AND is_deleted = false LIMIT 1`,
+            [id]
+        );
+        if (inUse.rows.length > 0) throw new Error('Cannot delete a department that has active users assigned to it.');
+        const result = await db.query(
+            `DELETE FROM department WHERE id = $1 RETURNING id, name`,
+            [id]
+        );
+        if (result.rows.length === 0) throw new Error('Department not found.');
+        return result.rows[0];
+    }
+
+    // ── GLOBAL ACCESS TOGGLE ──────────────────────────────────────────────────────
+
+    async setGlobalAccess(targetUserId, hasGlobalAccess) {
+        const result = await db.query(
+            `UPDATE operational_user
+             SET has_global_access = $1, updated_at = NOW()
+             WHERE op_user_id = $2 AND is_deleted = false
+             RETURNING op_user_id, first_name, last_name, user_role, has_global_access`,
+            [Boolean(hasGlobalAccess), targetUserId]
+        );
+        if (result.rows.length === 0) throw new Error('User not found.');
+        return result.rows[0];
+    }
 }
 
 

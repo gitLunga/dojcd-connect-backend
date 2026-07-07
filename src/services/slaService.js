@@ -335,4 +335,4 @@ function slaStatus(days, sla_days, warning_threshold, isCompleted) {
     return 'within';
 }
 
-module.exports = { getSlaDashboard, getSlaApplications, getApplicationSlaDetail };
+module.exports = { getSlaDashboard, getSlaApplications, getApplicationSlaDetail, buildSlaCte };

@@ -12,6 +12,8 @@ const auditRoutes    = require('./routes/auditRoutes');
 const slaRoutes        = require('./routes/slaRoutes');
 const reportRoutes     = require('./routes/reportRoutes');
 const contractRoutes   = require('./routes/contractRoutes');
+const profileRoutes    = require('./routes/profileRoutes');
+const { startSlaAlertJob } = require('./services/slaAlertJob');
 
 require("./config/db"); // Initialize DB connection
 
@@ -82,6 +84,10 @@ app.use('/api/audit',   auditRoutes);
 app.use('/api/sla',       slaRoutes);
 app.use('/api/reports',   reportRoutes);
 app.use('/api/contracts', contractRoutes);
+app.use('/api/profile',  profileRoutes);
+
+// ── SLA alert job — start after routes are registered ─────────────────────────
+startSlaAlertJob();
 
 app.get('/api/debug/pool', (req, res) => {
     const pool = require('./config/db');

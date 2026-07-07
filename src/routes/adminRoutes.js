@@ -47,5 +47,14 @@ router.delete('/operational-users/:id',  (req, res) => adminController.deleteOpe
 router.patch('/operational-users/:id/change-password', (req, res) => adminController.changeOperationalUserPassword(req, res));
 router.patch('/operational-users/:id/promote',         (req, res) => adminController.promoteToSuperAdmin(req, res));
 router.patch('/operational-users/:id/demote',          (req, res) => adminController.demoteSuperAdmin(req, res));
+router.patch('/operational-users/:id/global-access',   (req, res) => adminController.setGlobalAccess(req, res));
+
+// ── Departments ───────────────────────────────────────────────────────────────
+router.get('/departments',         (req, res) => adminController.getDepartments(req, res));
+router.post('/departments',        (req, res) => adminController.createDepartment(req, res));
+router.delete('/departments/:id',  (req, res) => adminController.deleteDepartment(req, res));
+
+// ── System overview ───────────────────────────────────────────────────────────
+router.get('/system-overview', (req, res) => adminController.getSystemOverview(req, res));
 
 module.exports = router;

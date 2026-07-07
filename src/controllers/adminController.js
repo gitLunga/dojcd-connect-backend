@@ -791,9 +791,56 @@ class AdminController {
         }
     }
 
+    async getSystemOverview(req, res) {
+        try {
+            const data = await adminService.getSystemOverview();
+            return res.status(200).json({ success: true, data, timestamp: new Date().toISOString() });
+        } catch (error) {
+            return res.status(500).json({ success: false, message: error.message, data: null });
+        }
+    }
 
+    async getDepartments(req, res) {
+        try {
+            const data = await adminService.getDepartments();
+            return res.status(200).json({ success: true, data });
+        } catch (error) {
+            return res.status(500).json({ success: false, message: error.message });
+        }
+    }
 
+    async createDepartment(req, res) {
+        try {
+            const { name, code } = req.body;
+            const data = await adminService.createDepartment(name, code);
+            return res.status(201).json({ success: true, data });
+        } catch (error) {
+            return res.status(error.message.includes('already exists') ? 409 : 400).json({ success: false, message: error.message });
+        }
+    }
 
+    async deleteDepartment(req, res) {
+        try {
+            const data = await adminService.deleteDepartment(parseInt(req.params.id));
+            return res.status(200).json({ success: true, data });
+        } catch (error) {
+            return res.status(error.message.includes('not found') ? 404 : 400).json({ success: false, message: error.message });
+        }
+    }
+
+    async setGlobalAccess(req, res) {
+        try {
+            const targetId = parseInt(req.params.id);
+            const { has_global_access } = req.body;
+            if (typeof has_global_access !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'has_global_access must be a boolean.' });
+            }
+            const data = await adminService.setGlobalAccess(targetId, has_global_access);
+            return res.status(200).json({ success: true, data });
+        } catch (error) {
+            return res.status(error.message.includes('not found') ? 404 : 500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 module.exports = new AdminController();

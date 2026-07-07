@@ -12,6 +12,7 @@ class OperationalUser {
         this.must_change_password = data.must_change_password !== undefined
             ? data.must_change_password : true;
         this.is_super_admin      = data.is_super_admin      || false;
+        this.has_global_access   = data.has_global_access   || false;
         this.is_deleted          = data.is_deleted          || false;
         this.deleted_at          = data.deleted_at          || null;
         this.created_at          = data.created_at          || null;

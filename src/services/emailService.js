@@ -160,9 +160,43 @@ async function sendPasswordChanged(to, firstName) {
     `));
 }
 
+async function sendSlaApproachingAlert(to, firstName, { applicationId, applicantName, deviceName, stageName, daysElapsed, slaDays, daysLeft }) {
+    return send(to, `SLA Warning — Application #${applicationId} approaching deadline`, wrap(`
+      <p>Dear ${firstName},</p>
+      <p>This is an automated SLA warning for the following application currently awaiting your action:</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;width:40%;">Application</td><td style="padding:8px;">#${applicationId} — ${applicantName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Device</td><td style="padding:8px;">${deviceName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Current Stage</td><td style="padding:8px;">${stageName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Time Elapsed</td><td style="padding:8px;">${daysElapsed} of ${slaDays} days</td></tr>
+        <tr><td style="padding:8px;background:#fff3cd;font-weight:bold;color:#856404;">Time Remaining</td><td style="padding:8px;background:#fff3cd;color:#856404;font-weight:bold;">${daysLeft} day(s) until SLA deadline</td></tr>
+      </table>
+      <p style="color:#856404;font-weight:bold;">⚠ Please action this application soon to avoid an SLA breach.</p>
+      <p>Log into the DOJCD Connect portal to review and approve or reject this application.</p>
+    `));
+}
+
+async function sendSlaBreachedAlert(to, firstName, { applicationId, applicantName, deviceName, stageName, daysElapsed, slaDays, daysOver }) {
+    return send(to, `SLA Breach — Application #${applicationId} is overdue`, wrap(`
+      <p>Dear ${firstName},</p>
+      <p>The following application has <strong style="color:#c62828;">exceeded its SLA deadline</strong> and requires immediate attention:</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;width:40%;">Application</td><td style="padding:8px;">#${applicationId} — ${applicantName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Device</td><td style="padding:8px;">${deviceName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Current Stage</td><td style="padding:8px;">${stageName}</td></tr>
+        <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">SLA Limit</td><td style="padding:8px;">${slaDays} day(s)</td></tr>
+        <tr><td style="padding:8px;background:#ffebee;font-weight:bold;color:#c62828;">Days Overdue</td><td style="padding:8px;background:#ffebee;color:#c62828;font-weight:bold;">${daysOver} day(s) past deadline (${daysElapsed} days total)</td></tr>
+      </table>
+      <p style="color:#c62828;font-weight:bold;">🚨 This application is overdue. Immediate action is required.</p>
+      <p>Escalate this to your supervisor if you are unable to action it immediately. Log into the DOJCD Connect portal for details.</p>
+    `));
+}
+
 module.exports = {
     send,
     sendWelcomeClient,
+    sendSlaApproachingAlert,
+    sendSlaBreachedAlert,
     sendProfileUnderReview,
     sendApplicationSubmitted,
     sendApplicationApprovedByManager,

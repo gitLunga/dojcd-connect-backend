@@ -255,7 +255,8 @@ class AuthService {
 
         const accessToken = tokenService.generateAccessToken(
             userResponse.op_user_id, 'Operational', userResponse.user_role,
-            userResponse.department_id || null, userResponse.must_change_password
+            userResponse.department_id || null, userResponse.must_change_password,
+            userResponse.has_global_access || false
         );
         const refreshToken = await tokenService.generateRefreshToken(userResponse.op_user_id, 'Operational');
 
@@ -283,7 +284,7 @@ class AuthService {
         }
 
         const userData = result.rows[0];
-        let user, userType, userId, role = null, departmentId = null, mustChangePassword = false;
+        let user, userType, userId, role = null, departmentId = null, mustChangePassword = false, hasGlobalAccess = false;
 
         if (userData.table_type === 'client') {
             user       = new ClientUser(userData);
@@ -297,6 +298,7 @@ class AuthService {
             role              = user.user_role;
             departmentId      = user.department_id || null;
             mustChangePassword = user.must_change_password;
+            hasGlobalAccess   = user.has_global_access || false;
         }
 
         const isValid = await bcrypt.compare(password, user.password_hash);
@@ -307,7 +309,7 @@ class AuthService {
         delete userResponse.password_hash;
         delete userResponse.table_type;
 
-        const accessToken  = tokenService.generateAccessToken(userId, userType, role, departmentId, mustChangePassword);
+        const accessToken  = tokenService.generateAccessToken(userId, userType, role, departmentId, mustChangePassword, hasGlobalAccess);
         const refreshToken = await tokenService.generateRefreshToken(userId, userType);
 
         return { user: userResponse, accessToken, refreshToken };
