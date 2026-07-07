@@ -136,9 +136,9 @@ async function fetchSlaData() {
                         (SELECT ap.approval_date FROM approval ap WHERE ap.application_id = a.application_id AND ap.approval_stage = 'finance' LIMIT 1)
                 END AS stage_entry_date,
                 CASE
-                    WHEN a.application_status = 'Pending'         THEN $1
-                    WHEN a.application_status = 'Pending_Finance' THEN $2
-                    WHEN a.application_status = 'Approved'        THEN $3
+                    WHEN a.application_status = 'Pending'         THEN $1::integer
+                    WHEN a.application_status = 'Pending_Finance' THEN $2::integer
+                    WHEN a.application_status = 'Approved'        THEN $3::integer
                 END AS sla_days
             FROM application a
             JOIN client_user cu ON a.client_user_id = cu.client_user_id

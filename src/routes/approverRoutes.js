@@ -2,8 +2,9 @@ const express            = require('express');
 const router             = express.Router();
 const approverController = require('../controllers/approverController');
 const adminController    = require('../controllers/adminController');
-const authenticate       = require('../middleware/authenticate');
-const requireRoles       = require('../middleware/authorize');
+const authenticate               = require('../middleware/authenticate');
+const requireRoles               = require('../middleware/authorize');
+const requireManagerOrDelegate   = require('../middleware/requireManagerOrDelegate');
 
 // All approver routes require a valid token
 router.use(authenticate);
@@ -51,19 +52,19 @@ router.get(
 
 router.post(
     '/manager/applications/:id/approve',
-    requireRoles('Manager', 'Approver'),
+    requireManagerOrDelegate,
     (req, res) => approverController.managerApprove(req, res)
 );
 
 router.post(
     '/manager/applications/:id/reject',
-    requireRoles('Manager', 'Approver'),
+    requireManagerOrDelegate,
     (req, res) => approverController.managerReject(req, res)
 );
 
 // ── Manager bulk actions ──────────────────────────────────────────────────────
-router.post('/manager/bulk-approve', requireRoles('Manager', 'Approver'), (req, res) => approverController.bulkManagerApprove(req, res));
-router.post('/manager/bulk-reject',  requireRoles('Manager', 'Approver'), (req, res) => approverController.bulkManagerReject(req, res));
+router.post('/manager/bulk-approve', requireManagerOrDelegate, (req, res) => approverController.bulkManagerApprove(req, res));
+router.post('/manager/bulk-reject',  requireManagerOrDelegate, (req, res) => approverController.bulkManagerReject(req, res));
 
 // ── Finance (Approver 2) ──────────────────────────────────────────────────────
 router.get(

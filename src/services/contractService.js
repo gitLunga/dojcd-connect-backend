@@ -133,12 +133,12 @@ async function getExpiringWithinDays(days, filters = {}) {
 async function getContractSummary() {
     const result = await db.query(`
         SELECT
-            COUNT(*)                                                                                AS total_contracts,
+            COUNT(*)                                                                                AS total,
             COUNT(*) FILTER (WHERE cu.contract_end_date >= NOW())                                  AS active,
             COUNT(*) FILTER (WHERE cu.contract_end_date < NOW())                                   AS expired,
-            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '30 days') AS expiring_30_days,
-            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '60 days') AS expiring_60_days,
-            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '90 days') AS expiring_90_days,
+            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '30 days') AS expiring_30,
+            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '60 days') AS expiring_60,
+            COUNT(*) FILTER (WHERE cu.contract_end_date BETWEEN NOW() AND NOW() + INTERVAL '90 days') AS expiring_90,
             COUNT(*) FILTER (WHERE cu.contract_end_date IS NULL)                                   AS no_contract
         FROM client_user cu
     `);
