@@ -1,15 +1,17 @@
 const db  = require('../config/db');
 const SLA = require('../config/slaConfig');
 
-// ── Core CTE: computes SLA status for every active application ────────────────
-// Stage entry dates:
-//   Pending          → application.submission_date
-//   Pending_Finance  → manager approval_date
-//   Approved*        → finance  approval_date   (* only when no order placed yet)
-//
-// Parameters: $1 = manager_sla_days, $2 = finance_sla_days, $3 = order_sla_days
+// ── Core CTE: SLA thresholds are inlined as integer literals (no parameter
+// type-inference ambiguity with node-postgres). Only filter/limit/offset
+// values are passed as bound parameters — those start at $1.
 
-const SLA_CTE = `
+function buildSlaCte() {
+    const mDays = parseInt(SLA.Pending.sla_days);
+    const fDays = parseInt(SLA.Pending_Finance.sla_days);
+    const oDays = parseInt(SLA.Approved.sla_days);
+    const warnPct = parseFloat(SLA.Pending.warning_threshold);   // e.g. 0.8
+
+    return `
 WITH stage_times AS (
     SELECT
         a.application_id,
@@ -33,9 +35,9 @@ WITH stage_times AS (
                       ORDER BY ap.approval_date DESC LIMIT 1)
         END                                       AS stage_entry_date,
         CASE
-            WHEN a.application_status = 'Pending'         THEN $1
-            WHEN a.application_status = 'Pending_Finance' THEN $2
-            WHEN a.application_status = 'Approved'        THEN $3
+            WHEN a.application_status = 'Pending'         THEN ${mDays}
+            WHEN a.application_status = 'Pending_Finance' THEN ${fDays}
+            WHEN a.application_status = 'Approved'        THEN ${oDays}
         END                                       AS sla_days,
         CASE
             WHEN a.application_status = 'Pending'         THEN 'Manager Review'
@@ -66,7 +68,7 @@ sla_calc AS (
                  > st.sla_days
                 THEN 'breached'
             WHEN EXTRACT(EPOCH FROM (NOW() - st.stage_entry_date)) / 86400
-                 > st.sla_days * $4
+                 > st.sla_days * ${warnPct}
                 THEN 'approaching'
             ELSE 'within'
         END                                                           AS sla_status
@@ -74,36 +76,27 @@ sla_calc AS (
     WHERE st.stage_entry_date IS NOT NULL
 )
 `;
-
-function slaParams(extra = []) {
-    return [
-        SLA.Pending.sla_days,
-        SLA.Pending_Finance.sla_days,
-        SLA.Approved.sla_days,
-        SLA.Pending.warning_threshold,   // same threshold across stages
-        ...extra,
-    ];
 }
 
 // ── Dashboard summary ─────────────────────────────────────────────────────────
 
 async function getSlaDashboard() {
     const result = await db.query(
-        SLA_CTE + `
+        buildSlaCte() + `
         SELECT
             sc.application_status,
             sc.stage_name,
             COUNT(*)                                   AS total,
-            COUNT(*) FILTER (WHERE sc.sla_status = 'within')     AS within_sla,
-            COUNT(*) FILTER (WHERE sc.sla_status = 'approaching') AS approaching_sla,
-            COUNT(*) FILTER (WHERE sc.sla_status = 'breached')    AS breached_sla,
+            COUNT(*) FILTER (WHERE sc.sla_status = 'within')      AS within_sla,
+            COUNT(*) FILTER (WHERE sc.sla_status = 'approaching')  AS approaching_sla,
+            COUNT(*) FILTER (WHERE sc.sla_status = 'breached')     AS breached_sla,
             ROUND(AVG(sc.days_in_stage), 1)            AS avg_days_in_stage,
             MAX(sc.days_in_stage)                      AS max_days_in_stage,
             MIN(sc.sla_days)                           AS sla_threshold_days
         FROM sla_calc sc
         GROUP BY sc.application_status, sc.stage_name
-        ORDER BY sc.application_status`,
-        slaParams()
+        ORDER BY sc.application_status`
+        // no bound params — all thresholds are inlined by buildSlaCte()
     );
 
     const stageRows = result.rows;
@@ -129,34 +122,35 @@ async function getSlaDashboard() {
 // ── Active applications with SLA status (filterable) ─────────────────────────
 
 async function getSlaApplications(filters = {}) {
-    const extra   = [];
+    const params  = [];
     const clauses = [];
-    let idx = 5;   // $1–$4 are used by the CTE params
+    let idx = 1;   // thresholds are inlined; params start at $1
 
     if (filters.sla_status) {
         clauses.push(`sc.sla_status = $${idx++}`);
-        extra.push(filters.sla_status);
+        params.push(filters.sla_status);
     }
     if (filters.application_status) {
         clauses.push(`sc.application_status = $${idx++}`);
-        extra.push(filters.application_status);
+        params.push(filters.application_status);
     }
     if (filters.region) {
         clauses.push(`cu.region = $${idx++}`);
-        extra.push(filters.region);
+        params.push(filters.region);
     }
     if (filters.department_id) {
         clauses.push(`cu.department_id = $${idx++}`);
-        extra.push(filters.department_id);
+        params.push(filters.department_id);
     }
 
     const where  = clauses.length ? `AND ${clauses.join(' AND ')}` : '';
     const limit  = Math.min(parseInt(filters.limit  || 50), 200);
     const offset = parseInt(filters.offset || 0);
+    const cte    = buildSlaCte();
 
     const [dataResult, countResult] = await Promise.all([
         db.query(
-            SLA_CTE + `
+            cte + `
             SELECT
                 sc.application_id,
                 sc.application_status,
@@ -183,15 +177,15 @@ async function getSlaApplications(filters = {}) {
             WHERE 1=1 ${where}
             ORDER BY sc.sla_percent_used DESC, sc.days_in_stage DESC
             LIMIT $${idx} OFFSET $${idx + 1}`,
-            slaParams([...extra, limit, offset])
+            [...params, limit, offset]
         ),
         db.query(
-            SLA_CTE + `
+            cte + `
             SELECT COUNT(*) AS total
             FROM sla_calc sc
             JOIN client_user cu ON sc.client_user_id = cu.client_user_id
             WHERE 1=1 ${where}`,
-            slaParams(extra)
+            params
         ),
     ]);
 
