@@ -989,9 +989,8 @@ class AdminService {
         const rawPath = result.rows[0].file_path;
         console.log(`📄 Document path from DB: ${rawPath}`);
 
-        // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/
         const storagePath = this._normaliseStoragePath(rawPath);
-        const url = `https://api.malcam.co.za/uploads/${storagePath}`;
+        const url = `/api/files/${storagePath}`;
 
         console.log(`✅ Document URL: ${url}`);
         return url;
@@ -1010,9 +1009,8 @@ class AdminService {
         const rawPath = result.rows[0].invoice_path;
         console.log(`📄 Invoice path from DB: ${rawPath}`);
 
-        // ✅ Return a direct /uploads/ static URL — no encoding, no /api/files/
         const storagePath = this._normaliseStoragePath(rawPath);
-        const url = `https://api.malcam.co.za/uploads/${storagePath}`;  //
+        const url = `/api/files/${storagePath}`;
         console.log(`✅ Invoice URL: ${url}`);
         return url;
     }
