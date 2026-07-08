@@ -221,6 +221,10 @@ class AuthService {
         await auditService.logLoginAttempt(email, ipAddress, isValid);
         if (!isValid) throw new Error('Invalid email or password');
 
+        if (user.registration_status === 'Deactivated') {
+            throw new Error('This account has been deactivated. Please contact an administrator.');
+        }
+
         const userResponse = { ...user };
         delete userResponse.password_hash;
 

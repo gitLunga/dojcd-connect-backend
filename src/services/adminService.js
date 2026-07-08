@@ -248,6 +248,61 @@ class AdminService {
         }
     }
 
+    async updateClientUser(userId, data) {
+        const { title, first_name, last_name, phone_number, email, department_id, region, user_type, persal_id } = data;
+
+        if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
+            throw new Error('first_name, last_name and email are required.');
+        }
+
+        const emailCheck = await db.query(
+            `SELECT client_user_id FROM client_user WHERE email = $1 AND client_user_id <> $2`,
+            [email.trim().toLowerCase(), userId]
+        );
+        if (emailCheck.rows.length > 0) {
+            throw new Error('That email address is already in use.');
+        }
+
+        const result = await db.query(
+            `UPDATE client_user
+             SET title         = COALESCE($1, title),
+                 first_name    = $2,
+                 last_name     = $3,
+                 email         = $4,
+                 phone_number  = COALESCE($5, phone_number),
+                 department_id = COALESCE($6, department_id),
+                 region        = COALESCE($7, region),
+                 user_type     = COALESCE($8, user_type),
+                 persal_id     = COALESCE($9, persal_id),
+                 updated_at    = CURRENT_TIMESTAMP
+             WHERE client_user_id = $10
+             RETURNING client_user_id, title, first_name, last_name, email, phone_number,
+                       department_id, region, user_type, persal_id, registration_status`,
+            [title || null, first_name.trim(), last_name.trim(),
+             email.trim().toLowerCase(), phone_number || null,
+             department_id || null, region || null, user_type || null,
+             persal_id || null, userId]
+        );
+
+        if (result.rows.length === 0) throw new Error('Client user not found.');
+        return result.rows[0];
+    }
+
+    async deleteClientUser(userId) {
+        const result = await db.query(
+            `UPDATE client_user
+             SET registration_status = 'Deactivated',
+                 updated_at           = CURRENT_TIMESTAMP
+             WHERE client_user_id = $1 AND registration_status <> 'Deactivated'
+             RETURNING client_user_id, first_name, last_name, email, registration_status`,
+            [userId]
+        );
+        if (result.rows.length === 0) {
+            throw new Error('Client user not found or already deactivated.');
+        }
+        return result.rows[0];
+    }
+
     // Get user statistics
     async getUserStatistics() {
         try {

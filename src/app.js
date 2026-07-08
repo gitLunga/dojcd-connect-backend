@@ -17,6 +17,7 @@ const pdfRoutes        = require('./routes/pdfRoutes');
 const returnRoutes     = require('./routes/returnRoutes');
 const delegationRoutes = require('./routes/delegationRoutes');
 const budgetRoutes     = require('./routes/budgetRoutes');
+const clientRoutes     = require('./routes/clientRoutes');
 const { startSlaAlertJob } = require('./services/slaAlertJob');
 
 require("./config/db"); // Initialize DB connection
@@ -93,6 +94,7 @@ app.use('/api/pdf',         pdfRoutes);
 app.use('/api/returns',     returnRoutes);
 app.use('/api/delegation',  delegationRoutes);
 app.use('/api/budget',      budgetRoutes);
+app.use('/api/client',      clientRoutes);
 
 // ── SLA alert job — start after routes are registered ─────────────────────────
 startSlaAlertJob();

@@ -18,8 +18,8 @@ module.exports = function authenticate(req, res, next) {
         next();
     } catch (err) {
         const message = err.name === 'TokenExpiredError'
-            ? 'Session expired. Please log in again.'
-            : 'Invalid token.';
+            ? 'Your session has expired. Please sign in again.'
+            : 'Your session is invalid. Please sign in again.';
         return res.status(401).json({ success: false, message, data: null });
     }
 };

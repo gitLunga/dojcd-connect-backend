@@ -62,7 +62,17 @@ async function getAuditLogs(filters = {}) {
 
     const [dataResult, countResult] = await Promise.all([
         db.query(
-            `SELECT * FROM audit_log WHERE ${where} ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+            `SELECT al.*,
+                COALESCE(
+                    CASE WHEN al.actor_type = 'operational_user' THEN ou.first_name || ' ' || ou.last_name END,
+                    CASE WHEN al.actor_type = 'client_user'      THEN cu.first_name || ' ' || cu.last_name END,
+                    'System'
+                ) AS actor_name
+             FROM audit_log al
+             LEFT JOIN operational_user ou ON al.actor_type = 'operational_user' AND al.actor_id = ou.op_user_id
+             LEFT JOIN client_user      cu ON al.actor_type = 'client_user'      AND al.actor_id = cu.client_user_id
+             WHERE ${where}
+             ORDER BY al.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
             [...params, limit, offset]
         ),
         db.query(`SELECT COUNT(*) FROM audit_log WHERE ${where}`, params),

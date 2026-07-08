@@ -231,6 +231,29 @@ class AdminController {
         }
     }
 
+    async updateClientUser(req, res) {
+        try {
+            const { id } = req.params;
+            const updated = await adminService.updateClientUser(id, req.body);
+            res.json({ success: true, message: 'Client user updated successfully.', data: { user: updated }, timestamp: new Date().toISOString() });
+        } catch (err) {
+            const status = err.message.includes('already in use') ? 409
+                         : err.message.includes('not found')     ? 404 : 400;
+            res.status(status).json({ success: false, message: err.message, data: null, timestamp: new Date().toISOString() });
+        }
+    }
+
+    async deleteClientUser(req, res) {
+        try {
+            const { id } = req.params;
+            const result = await adminService.deleteClientUser(id);
+            res.json({ success: true, message: 'Client user deactivated.', data: { user: result }, timestamp: new Date().toISOString() });
+        } catch (err) {
+            const status = err.message.includes('not found') ? 404 : 500;
+            res.status(status).json({ success: false, message: err.message, data: null, timestamp: new Date().toISOString() });
+        }
+    }
+
     // Get user statistics
     async getStatistics(req, res) {
         try {

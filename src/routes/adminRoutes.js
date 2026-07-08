@@ -34,6 +34,8 @@ router.patch('/documents/:id/status',    (req, res) => adminController.updateDoc
 
 // ── Client user management ────────────────────────────────────────────────────
 router.get('/client-users/:id',          (req, res) => adminController.getClientUserById(req, res));
+router.put('/client-users/:id',          (req, res) => adminController.updateClientUser(req, res));
+router.delete('/client-users/:id',       (req, res) => adminController.deleteClientUser(req, res));
 router.patch('/client-users/:id/status', (req, res) => adminController.updateUserStatus(req, res));
 
 // ── Operational user management ───────────────────────────────────────────────
