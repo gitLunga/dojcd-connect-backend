@@ -959,6 +959,191 @@ class ApplicationService {
         }
     }
 
+    async dispatchOrder(orderId, staffOpUserId, {
+        courierName = null, trackingNumber = null, deliveryAddress,
+        estimatedDeliveryDate = null, warehouseRef = null,
+    } = {}) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            const orderResult = await client.query(`
+                SELECT o.order_id, o.order_status,
+                       cu.client_user_id, cu.first_name AS client_first_name, cu.email AS client_email,
+                       d.device_name
+                FROM "order" o
+                JOIN application a    ON a.application_id = o.application_id
+                JOIN client_user cu   ON cu.client_user_id = a.client_user_id
+                JOIN device_catalog d ON d.device_id       = a.device_id
+                WHERE o.order_id = $1
+                FOR UPDATE OF o
+            `, [orderId]);
+
+            if (orderResult.rows.length === 0) {
+                throw new Error(`Order #${orderId} not found.`);
+            }
+            const order = orderResult.rows[0];
+
+            if (order.order_status !== 'Processing') {
+                return {
+                    success: false,
+                    message: `Order #${orderId} cannot be dispatched — current status is "${order.order_status}". Only orders that are "Processing" can be dispatched.`,
+                };
+            }
+
+            if (!deliveryAddress) {
+                return { success: false, message: 'A delivery address is required to dispatch this order.' };
+            }
+
+            await client.query(`
+                UPDATE "order" SET order_status = 'Dispatched', warehouse_ref = COALESCE($2, warehouse_ref)
+                WHERE order_id = $1
+            `, [orderId, warehouseRef]);
+
+            await client.query(`
+                INSERT INTO delivery
+                    (order_id, warehouse_op_user_id, courier_name, tracking_number, delivery_address, delivery_status, dispatch_date, estimated_delivery_date)
+                VALUES ($1, $2, $3, $4, $5, 'In_Transit', NOW(), $6)
+            `, [orderId, staffOpUserId, courierName, trackingNumber, deliveryAddress, estimatedDeliveryDate]);
+
+            await auditService.log(client, {
+                actorId:    staffOpUserId,
+                actorType:  'Operational',
+                action:     'ORDER_DISPATCHED',
+                entityType: 'order',
+                entityId:   orderId,
+                oldValue:   { order_status: 'Processing' },
+                newValue:   { order_status: 'Dispatched', tracking_number: trackingNumber },
+            });
+
+            await NotificationService.createNotification(
+                order.client_user_id, 'Client',
+                'Your Device Has Been Dispatched',
+                `Your ${order.device_name} is on its way!${trackingNumber ? ` Tracking number: ${trackingNumber}.` : ''} Order reference: #${orderId}.`
+            );
+
+            await client.query('COMMIT');
+
+            emailService.sendOrderDispatched(
+                order.client_email, order.client_first_name, order.device_name, orderId, trackingNumber
+            ).catch(() => {});
+
+            return {
+                success: true,
+                message: `Order #${orderId} has been marked as dispatched.`,
+                order: { order_id: orderId, order_status: 'Dispatched' },
+            };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('dispatchOrder error:', error);
+            if (error.message.includes('not found')) return { success: false, message: error.message };
+            return { success: false, message: friendlyError(error, 'dispatching order') };
+        } finally {
+            client.release();
+        }
+    }
+
+    async deliverOrder(orderId, staffOpUserId, {
+        imei, simNumber, mtnContractRef = null, billingPlanRef = null, activationDate = null,
+    } = {}) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            const orderResult = await client.query(`
+                SELECT o.order_id, o.order_status, a.device_id,
+                       cu.client_user_id, cu.first_name AS client_first_name, cu.email AS client_email,
+                       d.device_name
+                FROM "order" o
+                JOIN application a    ON a.application_id = o.application_id
+                JOIN client_user cu   ON cu.client_user_id = a.client_user_id
+                JOIN device_catalog d ON d.device_id       = a.device_id
+                WHERE o.order_id = $1
+                FOR UPDATE OF o
+            `, [orderId]);
+
+            if (orderResult.rows.length === 0) {
+                throw new Error(`Order #${orderId} not found.`);
+            }
+            const order = orderResult.rows[0];
+
+            if (order.order_status !== 'Dispatched') {
+                return {
+                    success: false,
+                    message: `Order #${orderId} cannot be marked delivered — current status is "${order.order_status}". Only orders that are "Dispatched" can be marked delivered.`,
+                };
+            }
+
+            if (!imei || !simNumber) {
+                return { success: false, message: 'IMEI and SIM number are required to activate the contract.' };
+            }
+
+            const existingContract = await client.query(
+                `SELECT contract_id FROM contract WHERE order_id = $1 LIMIT 1`, [orderId]
+            );
+            if (existingContract.rows.length > 0) {
+                return { success: false, message: `A contract has already been activated for Order #${orderId}.` };
+            }
+
+            await client.query(`UPDATE "order" SET order_status = 'Delivered' WHERE order_id = $1`, [orderId]);
+
+            await client.query(`
+                UPDATE delivery SET delivery_status = 'Delivered', actual_delivery_date = NOW()
+                WHERE order_id = $1
+            `, [orderId]);
+
+            const contractResult = await client.query(`
+                INSERT INTO contract (order_id, device_id, imei, sim_number, billing_plan_ref, activation_date, mtn_contract_ref)
+                VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), $7)
+                RETURNING contract_id, imei, sim_number, activation_date, mtn_contract_ref
+            `, [orderId, order.device_id, imei, simNumber, billingPlanRef, activationDate, mtnContractRef]);
+
+            const contract = contractResult.rows[0];
+
+            await auditService.log(client, {
+                actorId:    staffOpUserId,
+                actorType:  'Operational',
+                action:     'ORDER_DELIVERED',
+                entityType: 'contract',
+                entityId:   contract.contract_id,
+                newValue:   { order_id: orderId, imei, sim_number: simNumber },
+            });
+
+            await NotificationService.createNotification(
+                order.client_user_id, 'Client',
+                'Your Device Has Been Delivered',
+                `Your ${order.device_name} has been delivered and your contract is now active. Order reference: #${orderId}.`
+            );
+
+            await client.query('COMMIT');
+
+            emailService.sendOrderDelivered(
+                order.client_email, order.client_first_name, order.device_name, orderId
+            ).catch(() => {});
+
+            return {
+                success: true,
+                message: `Order #${orderId} has been marked as delivered and the contract is now active.`,
+                contract: {
+                    contract_id:      contract.contract_id,
+                    order_id:         orderId,
+                    imei:             contract.imei,
+                    sim_number:       contract.sim_number,
+                    activation_date:  contract.activation_date,
+                    mtn_contract_ref: contract.mtn_contract_ref,
+                },
+            };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('deliverOrder error:', error);
+            if (error.message.includes('not found')) return { success: false, message: error.message };
+            if (error.code === '23505') return { success: false, message: 'That IMEI, SIM number, or MTN contract reference is already in use.' };
+            return { success: false, message: friendlyError(error, 'delivering order') };
+        } finally {
+            client.release();
+        }
+    }
+
 }
 
 module.exports = new ApplicationService();

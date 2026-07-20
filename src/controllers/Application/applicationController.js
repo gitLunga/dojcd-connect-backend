@@ -317,6 +317,58 @@ const applicationController = {
             return fail(res, error.message || 'Something went wrong placing the order. Please try again.', 500);
         }
     },
+
+    dispatchOrder: async (req, res) => {
+        try {
+            const { orderId } = req.params;
+            const {
+                staff_op_user_id, courier_name, tracking_number,
+                delivery_address, estimated_delivery_date, warehouse_ref,
+            } = req.body;
+            if (!staff_op_user_id) return fail(res, 'Staff user ID is required to dispatch an order.', 400);
+            const result = await applicationService.dispatchOrder(
+                parseInt(orderId), parseInt(staff_op_user_id),
+                {
+                    courierName: courier_name || null,
+                    trackingNumber: tracking_number || null,
+                    deliveryAddress: delivery_address || null,
+                    estimatedDeliveryDate: estimated_delivery_date || null,
+                    warehouseRef: warehouse_ref || null,
+                }
+            );
+            if (result.success) return ok(res, result.message, { order: result.order }, 200);
+            return fail(res, result.message, result.message.includes('not found') ? 404 : 422);
+        } catch (error) {
+            console.error('Dispatch order error:', error);
+            return fail(res, error.message || 'Something went wrong dispatching the order. Please try again.', 500);
+        }
+    },
+
+    deliverOrder: async (req, res) => {
+        try {
+            const { orderId } = req.params;
+            const {
+                staff_op_user_id, imei, sim_number,
+                mtn_contract_ref, billing_plan_ref, activation_date,
+            } = req.body;
+            if (!staff_op_user_id) return fail(res, 'Staff user ID is required to mark an order as delivered.', 400);
+            const result = await applicationService.deliverOrder(
+                parseInt(orderId), parseInt(staff_op_user_id),
+                {
+                    imei: imei || null,
+                    simNumber: sim_number || null,
+                    mtnContractRef: mtn_contract_ref || null,
+                    billingPlanRef: billing_plan_ref || null,
+                    activationDate: activation_date || null,
+                }
+            );
+            if (result.success) return ok(res, result.message, { contract: result.contract }, 201);
+            return fail(res, result.message, result.message.includes('not found') ? 404 : (result.message.includes('already') ? 409 : 422));
+        } catch (error) {
+            console.error('Deliver order error:', error);
+            return fail(res, error.message || 'Something went wrong marking the order as delivered. Please try again.', 500);
+        }
+    },
 };
 
 module.exports = applicationController;

@@ -104,4 +104,16 @@ router.post(
     applicationController.placeOrder
 );
 
+router.post(
+    '/admin/orders/:orderId/dispatch',
+    requireRoles('Admin', 'MTN_Staff'),
+    applicationController.dispatchOrder
+);
+
+router.post(
+    '/admin/orders/:orderId/deliver',
+    requireRoles('Admin', 'MTN_Staff'),
+    applicationController.deliverOrder
+);
+
 module.exports = router;

@@ -126,6 +126,23 @@ async function sendOrderPlaced(to, firstName, deviceName, orderId) {
     `));
 }
 
+async function sendOrderDispatched(to, firstName, deviceName, orderId, trackingNumber = null) {
+    return send(to, `Your device has been dispatched`, wrap(`
+      <p>Dear ${firstName},</p>
+      <p>Your <strong>${deviceName}</strong> is on its way! (Order #${orderId})</p>
+      ${trackingNumber ? `<p>Tracking number: <strong>${trackingNumber}</strong></p>` : ''}
+      <p>You will receive another notification once your device has been delivered.</p>
+    `));
+}
+
+async function sendOrderDelivered(to, firstName, deviceName, orderId) {
+    return send(to, `Your device has been delivered`, wrap(`
+      <p>Dear ${firstName},</p>
+      <p>Your <strong>${deviceName}</strong> has been delivered and your contract is now active (Order #${orderId}).</p>
+      <p>You can view your contract details by logging into the portal.</p>
+    `));
+}
+
 async function sendOperationalUserWelcome(to, firstName, role, defaultPassword) {
     return send(to, 'Your DOJCD Connect staff account', wrap(`
       <p>Dear ${firstName},</p>
@@ -203,6 +220,8 @@ module.exports = {
     sendApplicationFullyApproved,
     sendApplicationRejected,
     sendOrderPlaced,
+    sendOrderDispatched,
+    sendOrderDelivered,
     sendOperationalUserWelcome,
     sendPasswordResetRequest,
     sendPasswordChanged,
