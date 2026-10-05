@@ -2,7 +2,8 @@
 node_modules/
 
 # Environment — never commit secrets
-
+.env
+.env.*
 !.env.example
 
 # Uploaded user files — binary blobs, not source code

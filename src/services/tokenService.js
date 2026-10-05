@@ -1,14 +1,11 @@
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const db     = require('../config/db');
+const { assertJwtSecret } = require('../config/secrets');
 
-const ACCESS_SECRET   = process.env.JWT_SECRET;
+const ACCESS_SECRET   = assertJwtSecret();   // throws if missing; in production also if shorter than 32 chars
 const ACCESS_TTL      = '15m';
 const REFRESH_TTL_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-if (!ACCESS_SECRET) {
-    throw new Error('JWT_SECRET environment variable is not set');
-}
 
 // ── Access token ──────────────────────────────────────────────────────────────
 
