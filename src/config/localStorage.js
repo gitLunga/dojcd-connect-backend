@@ -1,7 +1,9 @@
-const fs   = require('fs');
-const path = require('path');
+const fs        = require('fs');
+const path      = require('path');
+const signedUrl = require('./signedUrl');
 
-const LOCAL_ROOT = path.join(__dirname, '..', 'uploads');
+// UPLOADS_DIR lets deployments keep user files outside the code directory.
+const LOCAL_ROOT = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
 
 console.log(`📦 Storage mode: LOCAL DISK at ${LOCAL_ROOT}`);
 
@@ -37,9 +39,13 @@ async function downloadFile(storagePath) {
 }
 
 // ── getSignedUrl ───────────────────────────────────────────────────────────────
+// Returns a short-lived link that /api/files will accept (see ./signedUrl.js).
+// Call this only AFTER the caller has been authorised to see the file.
 async function getSignedUrl(storagePath) {
-    const encoded = encodeURIComponent(storagePath);
-    return `/api/files/${encoded}`;
+    const normalised  = normaliseStoragePath(storagePath);
+    const { exp, sig } = signedUrl.sign(normalised);
+    const encodedPath = normalised.split('/').map(encodeURIComponent).join('/');
+    return `/api/files/${encodedPath}?exp=${exp}&sig=${sig}`;
 }
 
 // ── deleteFile ────────────────────────────────────────────────────────────────
@@ -77,81 +83,76 @@ function cleanTempFiles(maxAgeHours = 24) {
 }
 
 // ── localFileRouter ───────────────────────────────────────────────────────────
+// GET /api/files/<path>?exp=<unix s>&sig=<hmac>
+// Serves a stored file only for a valid, unexpired signed link (see getSignedUrl).
+// Mounted without the JWT middleware on purpose: <img>/<iframe>/window.open cannot
+// send an Authorization header, so authorisation happens when the link is issued.
 const express = require('express');
 const localFileRouter = express.Router();
 
-// ✅ FIXED: Use regex pattern to capture entire path including encoded slashes
+const LINK_REJECTED = { success: false, message: 'This file link is invalid or has expired.' };
+
 localFileRouter.get(/\/(.*)/, (req, res) => {
-    try {
-        // Get the encoded path from route parameter
-        const encodedPath = req.params[0];
+    // Express has already URL-decoded the captured path once; decoding again would
+    // let a double-encoded "..%252F" slip past the checks below.
+    const storagePath = normaliseStoragePath(req.params[0]);
 
-        console.log(`\n📥 [/api/files] Request received`);
-        console.log(`   Encoded path: ${encodedPath}`);
-
-        // Decode the URL-encoded path
-        const storagePath = decodeURIComponent(encodedPath);
-        console.log(`   Decoded path: ${storagePath}`);
-
-        // Resolve to absolute path
-        const absPath = path.join(
-            path.join(__dirname, '..', 'uploads'),
-            storagePath
-        );
-        console.log(`   Absolute path: ${absPath}`);
-
-        // Check if file exists
-        if (!fs.existsSync(absPath)) {
-            console.error(`❌ File not found: ${absPath}`);
-            return res.status(404).json({
-                success: false,
-                message: 'File not found on disk',
-                requested: storagePath,
-                resolved: absPath
-            });
-        }
-
-        // Check if it's a file (not directory)
-        const stat = fs.statSync(absPath);
-        if (!stat.isFile()) {
-            console.error(`❌ Not a file: ${absPath}`);
-            return res.status(400).json({ success: false, message: 'Not a file' });
-        }
-
-        const buffer = fs.readFileSync(absPath);
-        const mimeType = getMimeFromPath(storagePath);
-        const fileName = path.basename(absPath);
-
-        console.log(`✅ Serving file: ${fileName}`);
-        console.log(`   Size: ${buffer.length} bytes`);
-        console.log(`   MIME: ${mimeType}\n`);
-
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-        res.setHeader('Content-Length', buffer.length);
-        res.end(buffer);
-    } catch (err) {
-        console.error(`❌ Error: ${err.message}\n`);
-        res.status(500).json({ success: false, message: err.message });
+    if (!storagePath || !signedUrl.verify(storagePath, req.query.exp, req.query.sig)) {
+        return res.status(403).json(LINK_REJECTED);
     }
+
+    let absPath;
+    try {
+        absPath = resolveLocalPath(storagePath);
+    } catch (_) {
+        return res.status(403).json(LINK_REJECTED);
+    }
+
+    const safeName = path.basename(absPath).replace(/[^\w.\-]/g, '_');
+
+    // sendFile streams the file and handles Range/ETag/If-Modified-Since (PDF viewers rely on Range).
+    res.sendFile(path.relative(LOCAL_ROOT, absPath), {
+        root: LOCAL_ROOT,
+        dotfiles: 'deny',
+        cacheControl: false,
+        headers: {
+            'Content-Type':           getMimeFromPath(absPath),
+            'Content-Disposition':    `inline; filename="${safeName}"`,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control':          'private, no-store',
+        },
+    }, (err) => {
+        if (!err || res.headersSent) return;
+        if (err.status === 404 || err.code === 'ENOENT') {
+            return res.status(404).json({ success: false, message: 'File not found.' });
+        }
+        console.error('❌ /api/files error:', err.message);
+        res.status(err.status || 500).json({ success: false, message: 'Could not serve file.' });
+    });
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// "/uploads/documents/a.pdf", "uploads/documents/a.pdf" and "documents/a.pdf" are the same file.
+function normaliseStoragePath(storagePath) {
+    if (!storagePath) return '';
+    let p = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
+    if (p.startsWith('uploads/')) p = p.slice('uploads/'.length);
+    return p;
+}
+
 function resolveLocalPath(storagePath) {
     if (!storagePath) throw new Error('Storage path is empty');
 
-    let p = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
-    if (p.startsWith('uploads/')) p = p.slice('uploads/'.length);
+    const resolved = path.resolve(LOCAL_ROOT, normaliseStoragePath(storagePath));
 
-    const resolved = path.join(LOCAL_ROOT, p);
-
-    // Security: prevent directory traversal
-    const normalized = path.normalize(resolved);
-    if (!normalized.startsWith(path.normalize(LOCAL_ROOT))) {
+    // Security: the result must stay inside LOCAL_ROOT. (A plain startsWith(LOCAL_ROOT)
+    // check would also accept siblings such as ".../uploads-backup/...".)
+    const rel = path.relative(LOCAL_ROOT, resolved);
+    if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
         throw new Error('Path traversal attempt detected');
     }
 
-    return normalized;
+    return resolved;
 }
 
 function getExtFromMime(mimeType) {

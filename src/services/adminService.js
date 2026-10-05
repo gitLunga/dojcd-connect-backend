@@ -1024,8 +1024,8 @@ class AdminService {
         return rawPath.startsWith('/uploads') || rawPath.startsWith('uploads/');
     }
 
-    // Returns a short-lived signed Supabase URL for direct browser viewing
-    // ✅ SIMPLIFIED: No more Supabase logic — just return /api/files URLs
+    // Returns a short-lived signed /api/files link for direct browser viewing.
+    // The caller must already have been authorised (see adminRoutes / approverRoutes).
     async getDocumentSignedUrl(documentId) {
         let query, params;
         if (documentId < 0) {
@@ -1041,14 +1041,8 @@ class AdminService {
             throw new Error('Document not found');
         }
 
-        const rawPath = result.rows[0].file_path;
-        console.log(`📄 Document path from DB: ${rawPath}`);
-
-        const storagePath = this._normaliseStoragePath(rawPath);
-        const url = `/api/files/${storagePath}`;
-
-        console.log(`✅ Document URL: ${url}`);
-        return url;
+        const storagePath = this._normaliseStoragePath(result.rows[0].file_path);
+        return storage.getSignedUrl(storagePath);
     }
 
     async getInvoiceSignedUrl(userId) {
@@ -1061,13 +1055,8 @@ class AdminService {
             throw new Error('Invoice not found for this user');
         }
 
-        const rawPath = result.rows[0].invoice_path;
-        console.log(`📄 Invoice path from DB: ${rawPath}`);
-
-        const storagePath = this._normaliseStoragePath(rawPath);
-        const url = `/api/files/${storagePath}`;
-        console.log(`✅ Invoice URL: ${url}`);
-        return url;
+        const storagePath = this._normaliseStoragePath(result.rows[0].invoice_path);
+        return storage.getSignedUrl(storagePath);
     }
 
 
