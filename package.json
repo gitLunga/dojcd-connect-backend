@@ -4,10 +4,11 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node --test test/files.test.js test/secrets.test.js",
+    "test": "node --test test/files.test.js test/secrets.test.js test/temp-password.test.js test/operational-registration.test.js test/must-change-password.test.js",
     "start": "node server.js && node scripts/init-folders.js",
     "dev": "nodemon server.js && node scripts/init-folders.js",
-    "build": "npm install"
+    "build": "npm install",
+    "create-admin": "node src/scripts/create-admin.js"
   },
   "keywords": [],
   "author": "",

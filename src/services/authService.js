@@ -149,61 +149,6 @@ class AuthService {
         }
     }
 
-    // ── REGISTER OPERATIONAL USER ─────────────────────────────────────────────
-
-    async registerOperationalUser(userData, createdByAdminId = null) {
-        const { title, first_name, last_name, email, user_role, password, department_id } = userData;
-
-        const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance'];
-        if (!validRoles.includes(user_role)) {
-            throw new Error(`Invalid user role. Must be one of: ${validRoles.join(', ')}`);
-        }
-
-        passwordPolicy.enforce(password);
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const client = await db.connect();
-
-        try {
-            await client.query('BEGIN');
-
-            const emailCheck = await client.query(
-                `SELECT op_user_id FROM operational_user WHERE email = $1`, [email]
-            );
-            if (emailCheck.rows.length > 0) throw new Error('Email already registered');
-
-            const result = await client.query(
-                `INSERT INTO operational_user
-                     (title, first_name, last_name, email, user_role, department_id, password_hash, must_change_password)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7, false) RETURNING *`,
-                [title, first_name, last_name, email, user_role, department_id || null, hashedPassword]
-            );
-            if (result.rows.length === 0) throw new Error('Operational user registration failed');
-
-            const user = new OperationalUser(result.rows[0]);
-
-            await auditService.log(client, {
-                actorId: createdByAdminId || user.op_user_id,
-                actorType: createdByAdminId ? 'Operational' : 'System',
-                action: 'OPERATIONAL_USER_CREATED', entityType: 'operational_user', entityId: user.op_user_id,
-                newValue: { email, user_role },
-            });
-
-            await client.query('COMMIT');
-
-            emailService.sendOperationalUserWelcome(email, first_name, user_role, password).catch(() => {});
-
-            const userResponse = { ...user };
-            delete userResponse.password_hash;
-            return userResponse;
-        } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
-        } finally {
-            client.release();
-        }
-    }
-
     // ── LOGIN CLIENT ──────────────────────────────────────────────────────────
 
     async loginClientUser(loginData, ipAddress = null) {

@@ -57,8 +57,9 @@ router.post(
     (req, res) => authController.completeProfile(req, res)
 );
 
-// Register a new operational user — public
-router.post('/register-operational', (req, res) => authController.registerOperational(req, res));
+// There is deliberately no public route for creating operational (staff) users.
+// Staff accounts are created by an Admin via POST /api/admin/operational-users,
+// or for the very first Admin with `npm run create-admin`.
 
 // Change password — any authenticated user
 router.post('/change-password', authenticate, (req, res) => authController.changePassword(req, res));

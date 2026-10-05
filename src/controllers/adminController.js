@@ -592,7 +592,8 @@ class AdminController {
                 });
             }
 
-            const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance', 'Support'];
+            // Must match the operational_user_user_role_check constraint in the database.
+            const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance'];
             if (!validRoles.includes(user_role)) {
                 return res.status(400).json({
                     success: false,
@@ -602,7 +603,7 @@ class AdminController {
                 });
             }
 
-            const { user, defaultPassword } = await adminService.createOperationalUser(req.body);
+            const { user, defaultPassword } = await adminService.createOperationalUser(req.body, req.user.userId);
 
             return res.status(201).json({
                 success: true,
@@ -637,7 +638,8 @@ class AdminController {
             }
 
             if (user_role) {
-                const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance', 'Support'];
+                // Must match the operational_user_user_role_check constraint in the database.
+                const validRoles = ['Admin', 'MTN_Staff', 'Approver', 'Manager', 'Finance'];
                 if (!validRoles.includes(user_role)) {
                     return res.status(400).json({
                         success: false,

@@ -4,6 +4,8 @@ const storage        = require('../config/localStorage');
 const bcrypt         = require('bcrypt');
 const passwordPolicy = require('../utils/passwordPolicy');
 const emailService   = require('./emailService');
+const auditService   = require('./auditService');
+const { generateTempPassword } = require('../utils/tempPassword');
 
 
 class AdminService {
@@ -1061,52 +1063,67 @@ class AdminService {
 
 
     // ── CREATE OPERATIONAL USER ──────────────────────────────────────────────────
-    async createOperationalUser(userData) {
+    // The only way to create staff accounts (there is no public registration).
+    // The account gets a random one-time password and must change it at first sign-in;
+    // the API refuses every other request on that token until it has (middleware/authenticate).
+    async createOperationalUser(userData, createdByOpUserId = null) {
+        const email = userData.email.trim().toLowerCase();
+        const tempPassword   = generateTempPassword();
+        const hashedPassword = await bcrypt.hash(tempPassword, 12);
+        const client = await db.connect();
+
         try {
-            const existing = await db.query(
-                `SELECT op_user_id FROM operational_user WHERE email = $1`,
-                [userData.email.trim().toLowerCase()]
+            await client.query('BEGIN');
+
+            const existing = await client.query(
+                `SELECT op_user_id FROM operational_user WHERE email = $1`, [email]
             );
             if (existing.rows.length > 0) {
                 throw new Error('An operational user with this email already exists.');
             }
 
-            const rawPassword = `${userData.first_name.trim().toLowerCase()}${userData.last_name.trim().toLowerCase()}#123`;
-            const hashedPassword = await bcrypt.hash(rawPassword, 12);
-
-            const result = await db.query(
+            const result = await client.query(
                 `INSERT INTO operational_user (
-                    title, first_name, last_name, email, user_role, department_id, password_hash
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    title, first_name, last_name, email, user_role, department_id,
+                    password_hash, must_change_password
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
                  RETURNING op_user_id, title, first_name, last_name, email, user_role, department_id, created_at`,
                 [
                     userData.title?.trim() || null,
                     userData.first_name.trim(),
                     userData.last_name.trim(),
-                    userData.email.trim().toLowerCase(),
+                    email,
                     userData.user_role,
                     userData.department_id?.trim() || null,
                     hashedPassword,
                 ]
             );
+            const user = result.rows[0];
 
-            emailService.sendOperationalUserWelcome(
-                userData.email.trim().toLowerCase(),
-                userData.first_name.trim(),
-                userData.user_role,
-                rawPassword
-            ).catch(() => {});
+            await auditService.log(client, {
+                actorId:    createdByOpUserId || user.op_user_id,   // audit_log.actor_id is NOT NULL
+                actorType:  createdByOpUserId ? 'Operational' : 'System',
+                action:     'OPERATIONAL_USER_CREATED',
+                entityType: 'operational_user',
+                entityId:   user.op_user_id,
+                newValue:   { email, user_role: user.user_role, department_id: user.department_id },
+            });
 
-            return {
-                user: result.rows[0],
-                defaultPassword: rawPassword,
-            };
+            await client.query('COMMIT');
+
+            emailService.sendOperationalUserWelcome(email, user.first_name, user.user_role, tempPassword)
+                .catch(() => {});
+
+            return { user, defaultPassword: tempPassword };
 
         } catch (error) {
+            await client.query('ROLLBACK');
             if (error.message.includes('already exists') || error.message.includes('duplicate key')) {
                 throw new Error('An operational user with this email already exists.');
             }
             throw new Error(`Error creating operational user: ${error.message}`);
+        } finally {
+            client.release();
         }
     }
 

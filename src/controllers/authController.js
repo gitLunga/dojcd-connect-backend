@@ -63,25 +63,6 @@ class AuthController {
         }
     }
 
-    async registerOperational(req, res) {
-        try {
-            const user = await authService.registerOperationalUser(req.body, req.user?.userId);
-            return res.status(201).json({
-                success: true,
-                message: 'Operational user registration successful',
-                data: { user },
-                timestamp: new Date().toISOString(),
-            });
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message,
-                data: null,
-                timestamp: new Date().toISOString(),
-            });
-        }
-    }
-
     async loginClient(req, res) {
         try {
             const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
