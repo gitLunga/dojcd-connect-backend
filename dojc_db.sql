@@ -1,7 +1,10 @@
 -- =============================================================================
--- DOJCD Connect — Full Database Schema (canonical, fresh-install version)
+-- DOJCD Connect — Original 15-table schema  (DEPRECATED — HISTORY ONLY)
 -- =============================================================================
--- For existing databases run migrations/001_fix_schema.sql instead.
+-- This file is NOT current: it lacks department, device_return,
+-- approval_delegation, department_budget, storage_files and the
+-- operational_user.has_global_access column that login needs.
+-- Use database/schema.sql instead:   ./database/setup.sh
 -- =============================================================================
 
 BEGIN;

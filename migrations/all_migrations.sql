@@ -1,5 +1,8 @@
 -- =============================================================================
--- DOJCD Connect — Consolidated Database Migrations
+-- DOJCD Connect — Consolidated Database Migrations  (DEPRECATED — HISTORY ONLY)
+-- =============================================================================
+-- Stops at 006: it has no 007 ('Deactivated' status) and no 008 (departments).
+-- Use database/schema.sql instead:   ./database/setup.sh
 -- =============================================================================
 -- Single file that applies every migration from 001 through 006, plus the
 -- department-isolation changes, in strict dependency order.
