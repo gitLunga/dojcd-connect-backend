@@ -16,6 +16,17 @@ const canViewDocs = requireRoles('Manager', 'Approver', 'Finance', 'Admin');
 router.get('/client-users/:id/documents', canViewDocs, (req, res) => adminController.getAllUserDocuments(req, res));
 router.get('/documents/:id/view',         canViewDocs, (req, res) => adminController.viewDocument(req, res));
 router.get('/documents/:id/download',     canViewDocs, (req, res) => adminController.downloadDocument(req, res));
+// Stage-1 review: the Manager marks each document Verified / Rejected before approving.
+// (The Admin-only /api/admin/documents/:id/status returns 403 for Managers.)
+router.patch('/documents/:id/status',     requireManagerOrDelegate, (req, res) => {
+    if (!/^\d{1,9}$/.test(req.params.id)) {
+        return res.status(400).json({ success: false, message: 'Invalid document id.', data: null });
+    }
+    if (!['Verified', 'Rejected'].includes(req.body && req.body.status)) {
+        return res.status(400).json({ success: false, message: "status must be 'Verified' or 'Rejected'.", data: null });
+    }
+    return adminController.updateDocumentStatus(req, res);
+});
 
 // ── My department's clients ───────────────────────────────────────────────────
 router.get(

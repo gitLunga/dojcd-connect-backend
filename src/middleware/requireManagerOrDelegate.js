@@ -3,7 +3,17 @@ const delegationService = require('../services/delegationService');
 // Grants access if the user has Manager/Approver role OR has an active delegation
 // from a Manager for today's date. Attaches req.user.actingForDelegatorId if delegated.
 module.exports = async function requireManagerOrDelegate(req, res, next) {
-    const { role } = req.user;
+    const { role, userType } = req.user;
+
+    // A client_user_id is not an op_user_id. Without this, a client whose id equals an active
+    // delegate's staff id was treated as that delegate.
+    if (userType === 'Client') {
+        return res.status(403).json({
+            success: false,
+            message: 'Access denied. Manager role or active delegation required.',
+            data:    null,
+        });
+    }
 
     if (role === 'Manager' || role === 'Approver' || role === 'Admin') {
         return next();

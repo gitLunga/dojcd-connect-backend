@@ -166,6 +166,7 @@ class ApproverService {
 
             const result = await client.query(`
                 SELECT a.application_id,
+                       a.client_user_id,
                        a.application_status,
                        a.submission_date,
                        a.last_updated,
