@@ -4,7 +4,8 @@
 -- This file is NOT current: it lacks department, device_return,
 -- approval_delegation, department_budget, storage_files and the
 -- operational_user.has_global_access column that login needs.
--- Use database/schema.sql instead:   ./database/setup.sh
+-- Use dojcd_db.sql instead (note the extra 'd', same folder as this file):
+--   psql -d <dbname> -v ON_ERROR_STOP=1 -f dojcd_db.sql
 -- =============================================================================
 
 BEGIN;

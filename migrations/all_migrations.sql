@@ -2,7 +2,8 @@
 -- DOJCD Connect — Consolidated Database Migrations  (DEPRECATED — HISTORY ONLY)
 -- =============================================================================
 -- Stops at 006: it has no 007 ('Deactivated' status) and no 008 (departments).
--- Use database/schema.sql instead:   ./database/setup.sh
+-- Use dojcd_db.sql in the repo root instead:
+--   psql -d <dbname> -v ON_ERROR_STOP=1 -f dojcd_db.sql
 -- =============================================================================
 -- Single file that applies every migration from 001 through 006, plus the
 -- department-isolation changes, in strict dependency order.
