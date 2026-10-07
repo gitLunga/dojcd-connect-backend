@@ -48,13 +48,21 @@ async function getAuditLogs(filters = {}) {
     const params     = [];
     let idx = 1;
 
-    if (filters.actor_id)    { conditions.push(`actor_id = $${idx++}`);    params.push(parseInt(filters.actor_id)); }
-    if (filters.actor_type)  { conditions.push(`actor_type = $${idx++}`);  params.push(filters.actor_type); }
-    if (filters.action)      { conditions.push(`action ILIKE $${idx++}`);  params.push(`%${filters.action}%`); }
-    if (filters.entity_type) { conditions.push(`entity_type = $${idx++}`); params.push(filters.entity_type); }
-    if (filters.entity_id)   { conditions.push(`entity_id = $${idx++}`);   params.push(parseInt(filters.entity_id)); }
-    if (filters.date_from)   { conditions.push(`created_at >= $${idx++}`); params.push(filters.date_from); }
-    if (filters.date_to)     { conditions.push(`created_at <= $${idx++}`); params.push(filters.date_to); }
+    // Columns are qualified with "al." because the data query below joins operational_user and
+    // client_user, which also have a created_at column (an unqualified created_at was ambiguous).
+    if (filters.actor_id)    { conditions.push(`al.actor_id = $${idx++}`);    params.push(parseInt(filters.actor_id)); }
+    if (filters.actor_type)  {
+        // The app writes actor_type in two spellings: 'Operational' / 'Client' / 'System' (most services)
+        // and 'operational_user' / 'client_user' / 'system' (budget and delegation). Treat them as one.
+        conditions.push(`lower(al.actor_type) IN ($${idx}, $${idx} || '_user')`);
+        params.push(String(filters.actor_type).toLowerCase().replace(/_user$/, ''));
+        idx++;
+    }
+    if (filters.action)      { conditions.push(`al.action ILIKE $${idx++}`);  params.push(`%${filters.action}%`); }
+    if (filters.entity_type) { conditions.push(`al.entity_type = $${idx++}`); params.push(filters.entity_type); }
+    if (filters.entity_id)   { conditions.push(`al.entity_id = $${idx++}`);   params.push(parseInt(filters.entity_id)); }
+    if (filters.date_from)   { conditions.push(`al.created_at >= $${idx++}`); params.push(filters.date_from); }
+    if (filters.date_to)     { conditions.push(`al.created_at <= $${idx++}`); params.push(filters.date_to); }
 
     const where  = conditions.join(' AND ');
     const limit  = Math.min(parseInt(filters.limit  || 100), 500);
@@ -64,18 +72,18 @@ async function getAuditLogs(filters = {}) {
         db.query(
             `SELECT al.*,
                 COALESCE(
-                    CASE WHEN al.actor_type = 'operational_user' THEN ou.first_name || ' ' || ou.last_name END,
-                    CASE WHEN al.actor_type = 'client_user'      THEN cu.first_name || ' ' || cu.last_name END,
+                    CASE WHEN lower(al.actor_type) IN ('operational', 'operational_user') THEN ou.first_name || ' ' || ou.last_name END,
+                    CASE WHEN lower(al.actor_type) IN ('client', 'client_user')            THEN cu.first_name || ' ' || cu.last_name END,
                     'System'
                 ) AS actor_name
              FROM audit_log al
-             LEFT JOIN operational_user ou ON al.actor_type = 'operational_user' AND al.actor_id = ou.op_user_id
-             LEFT JOIN client_user      cu ON al.actor_type = 'client_user'      AND al.actor_id = cu.client_user_id
+             LEFT JOIN operational_user ou ON lower(al.actor_type) IN ('operational', 'operational_user') AND al.actor_id = ou.op_user_id
+             LEFT JOIN client_user      cu ON lower(al.actor_type) IN ('client', 'client_user')            AND al.actor_id = cu.client_user_id
              WHERE ${where}
              ORDER BY al.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
             [...params, limit, offset]
         ),
-        db.query(`SELECT COUNT(*) FROM audit_log WHERE ${where}`, params),
+        db.query(`SELECT COUNT(*) FROM audit_log al WHERE ${where}`, params),
     ]);
 
     return {
