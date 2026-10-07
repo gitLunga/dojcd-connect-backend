@@ -58,7 +58,7 @@ async function listReturns(filters = {}) {
                  dr.return_id, dr.return_status, dr.return_reason,
                  dr.condition_grade, dr.condition_notes,
                  dr.initiated_at, dr.collected_at, dr.completed_at,
-                 dr.initiated_by_type,
+                 dr.initiated_by_type, dr.visible_to_client,
                  cu.first_name, cu.last_name, cu.email,
                  cu.department_id, cu.region, cu.persal_id,
                  d.device_name, d.model, d.manufacturer,
@@ -293,16 +293,12 @@ async function getReturnSummary() {
 
 // ── Client self-service ───────────────────────────────────────────────────────
 
-// Operational users who should hear about a client's return activity: every Admin, plus the
-// Managers of the client's department (or Managers with global access).
-async function notifyStaff(departmentId, title, message) {
+// Staff who should hear about a client's return activity: the Admins, because the Returns screen
+// lives in the Admin portal.
+async function notifyStaff(title, message) {
     try {
         const staff = await db.query(
-            `SELECT op_user_id FROM operational_user
-             WHERE is_deleted = false
-               AND (user_role = 'Admin'
-                    OR (user_role = 'Manager' AND (department_id = $1 OR has_global_access = true)))`,
-            [departmentId]
+            `SELECT op_user_id FROM operational_user WHERE is_deleted = false AND user_role = 'Admin'`
         );
         await Promise.all(staff.rows.map(s =>
             notificationService.createNotification(s.op_user_id, 'Operational', title, message).catch(() => {})
@@ -418,7 +414,7 @@ async function requestReturnAsClient({ clientUserId, contractId, returnReason })
         `Your request to return the ${info.device_name} has been received. We will let you know when it is approved.`
     ).catch(() => {});
     await notifyStaff(
-        info.department_id, 'New Device Return Request',
+        'New Device Return Request',
         `${info.first_name} ${info.last_name} has asked to return the ${info.device_name} (return #${created.return_id}).`
     );
 
@@ -477,7 +473,7 @@ async function cancelOwnReturn({ returnId, clientUserId }) {
     }
 
     await notifyStaff(
-        info.department_id, 'Device Return Withdrawn',
+        'Device Return Withdrawn',
         `${info.first_name} ${info.last_name} withdrew their request to return the ${info.device_name} (return #${returnId}).`
     );
 
