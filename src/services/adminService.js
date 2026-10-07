@@ -727,7 +727,7 @@ class AdminService {
                 GROUP BY region ORDER BY count DESC LIMIT 1
                     ),
                     todays_apps AS (
-                SELECT COUNT(*) AS count FROM application WHERE created_at >= $1
+                SELECT COUNT(*) AS count FROM application WHERE submission_date >= $1
                     ),
                     fulfilment AS (
                 SELECT
