@@ -876,7 +876,7 @@ class AdminService {
                  UNION ALL
 
                  -- Get invoice as a document
-                 SELECT -1           as document_id,
+                 SELECT -client_user_id as document_id,   -- viewUserDocument / getDocumentSignedUrl read -id as the client id
                         'Invoice'    as document_type,
                         invoice_path as file_path,
                         created_at   as upload_date,
