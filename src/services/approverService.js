@@ -946,6 +946,36 @@ class ApproverService {
             client.release();
         }
     }
+
+    /**
+     * May this user review (verify / reject) the given document?
+     * Same scoping as the manager queue: a Manager works on their own department's clients unless they
+     * have global access; a delegate works under the delegating manager's scope; Admins see everything.
+     */
+    async canReviewDocument(documentId, user) {
+        if (user.role === 'Admin') return true;
+
+        let departmentId = user.departmentId;
+        let globalAccess = user.hasGlobalAccess;
+        if (user.actingForDelegatorId) {
+            const delegator = await db.query(
+                `SELECT department_id, has_global_access FROM operational_user WHERE op_user_id = $1`,
+                [user.actingForDelegatorId]
+            );
+            departmentId = delegator.rows[0]?.department_id;
+            globalAccess = delegator.rows[0]?.has_global_access;
+        }
+        if (globalAccess || !departmentId) return true;
+
+        const owner = await db.query(
+            `SELECT cu.department_id
+             FROM document d JOIN client_user cu ON cu.client_user_id = d.client_user_id
+             WHERE d.document_id = $1`,
+            [documentId]
+        );
+        // An unknown document is left to the update itself, which answers 404.
+        return owner.rows.length === 0 || owner.rows[0].department_id === departmentId;
+    }
 }
 
 module.exports = new ApproverService();

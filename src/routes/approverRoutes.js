@@ -2,6 +2,7 @@ const express            = require('express');
 const router             = express.Router();
 const approverController = require('../controllers/approverController');
 const adminController    = require('../controllers/adminController');
+const approverService    = require('../services/approverService');
 const authenticate               = require('../middleware/authenticate');
 const requireRoles               = require('../middleware/authorize');
 const requireManagerOrDelegate   = require('../middleware/requireManagerOrDelegate');
@@ -18,12 +19,20 @@ router.get('/documents/:id/view',         canViewDocs, (req, res) => adminContro
 router.get('/documents/:id/download',     canViewDocs, (req, res) => adminController.downloadDocument(req, res));
 // Stage-1 review: the Manager marks each document Verified / Rejected before approving.
 // (The Admin-only /api/admin/documents/:id/status returns 403 for Managers.)
-router.patch('/documents/:id/status',     requireManagerOrDelegate, (req, res) => {
+router.patch('/documents/:id/status',     requireManagerOrDelegate, async (req, res) => {
     if (!/^\d{1,9}$/.test(req.params.id)) {
         return res.status(400).json({ success: false, message: 'Invalid document id.', data: null });
     }
     if (!['Verified', 'Rejected'].includes(req.body && req.body.status)) {
         return res.status(400).json({ success: false, message: "status must be 'Verified' or 'Rejected'.", data: null });
+    }
+    try {
+        if (!(await approverService.canReviewDocument(req.params.id, req.user))) {
+            return res.status(403).json({ success: false, message: "This document belongs to a client outside your department.", data: null });
+        }
+    } catch (error) {
+        console.error('document status scope check failed:', error);
+        return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.', data: null });
     }
     return adminController.updateDocumentStatus(req, res);
 });
