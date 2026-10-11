@@ -4,6 +4,8 @@ const multer       = require('multer');
 const authController  = require('../controllers/authController');
 const authenticate    = require('../middleware/authenticate');
 const requireRoles    = require('../middleware/authorize');
+const requireLocalAuth = require('../middleware/requireLocalAuth');
+const directoryController = require('../controllers/directoryController');
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -29,17 +31,28 @@ const completeProfileUpload = upload.fields([
 // ── Public ────────────────────────────────────────────────────────────────────
 router.get('/test', (req, res) => res.status(200).json({ success: true, message: 'Auth router OK' }));
 
-router.post('/register',   (req, res) => authController.register(req, res));
+// Which sign-in screen to show: "local" (email + password), "ldap" (domain credentials) or "entra" (Microsoft).
+router.get('/config', (req, res) => directoryController.config(req, res));
+
+// Self-registration only exists when this server keeps the passwords itself; with directory sign-in
+// the account is created automatically on first sign-in.
+router.post('/register',   requireLocalAuth, (req, res) => authController.register(req, res));
 router.post('/login',      (req, res) => authController.login(req, res));
 router.post('/login-client',      (req, res) => authController.loginClient(req, res));
 router.post('/login-operational', (req, res) => authController.loginOperational(req, res));
+
+// Microsoft Entra ID sign-in (AUTH_PROVIDER=entra): browser goes out to Microsoft, comes back to the
+// callback, and the front-end swaps the one-time ticket for tokens.
+router.get('/entra/login',          (req, res) => directoryController.entraLogin(req, res));
+router.get('/entra/callback',       (req, res) => directoryController.entraCallback(req, res));
+router.post('/directory/exchange',  (req, res) => directoryController.exchange(req, res));
 
 // Refresh access token — authenticated by the refresh token itself (no Bearer header needed)
 router.post('/refresh',         (req, res) => authController.refresh(req, res));
 
 // Forgot / reset password — public
-router.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
-router.post('/reset-password',  (req, res) => authController.resetPassword(req, res));
+router.post('/forgot-password', requireLocalAuth, (req, res) => authController.forgotPassword(req, res));
+router.post('/reset-password',  requireLocalAuth, (req, res) => authController.resetPassword(req, res));
 
 // ── Requires valid access token ───────────────────────────────────────────────
 

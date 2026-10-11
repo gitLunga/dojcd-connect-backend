@@ -161,6 +161,11 @@ class AuthService {
             throw new Error('Invalid email or password');
         }
 
+        if (result.rows[0].auth_source && result.rows[0].auth_source !== 'local') {
+            await auditService.logLoginAttempt(email, ipAddress, false);
+            throw new Error('This account signs in with your organisation account. Please use the organisation sign-in.');
+        }
+
         const user = new ClientUser(result.rows[0]);
         const isValid = await bcrypt.compare(password, user.password_hash);
         await auditService.logLoginAttempt(email, ipAddress, isValid);
@@ -193,6 +198,11 @@ class AuthService {
             throw new Error('Invalid email or password');
         }
 
+        if (result.rows[0].auth_source && result.rows[0].auth_source !== 'local') {
+            await auditService.logLoginAttempt(email, ipAddress, false);
+            throw new Error('This account signs in with your organisation account. Please use the organisation sign-in.');
+        }
+
         const user = new OperationalUser(result.rows[0]);
         const isValid = await bcrypt.compare(password, user.password_hash);
         await auditService.logLoginAttempt(email, ipAddress, isValid);
@@ -210,6 +220,33 @@ class AuthService {
         const refreshToken = await tokenService.generateRefreshToken(userResponse.op_user_id, 'Operational');
 
         return { user: userResponse, accessToken, refreshToken };
+    }
+
+    // ── BREAK-GLASS ADMIN (directory modes only) ─────────────────────────────
+    // When AUTH_ALLOW_LOCAL_ADMIN_LOGIN=true a local Admin (created with `npm run create-admin`) may still
+    // sign in with its own password, so the directory being down never locks everyone out.
+    // Returns a session, or null so the caller carries on with the directory.
+    async loginLocalBreakGlassAdmin({ email, password }, ipAddress = null) {
+        const found = await db.query(
+            `SELECT * FROM operational_user
+              WHERE lower(email) = $1 AND auth_source = 'local' AND user_role = 'Admin'
+                AND is_deleted = false AND password_hash IS NOT NULL`,
+            [String(email || '').trim().toLowerCase()]
+        );
+        if (found.rows.length === 0) return null;
+        const user = new OperationalUser(found.rows[0]);
+        if (typeof password !== 'string' || !(await bcrypt.compare(password, user.password_hash))) return null;
+
+        await auditService.logLoginAttempt(email, ipAddress, true);
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+        userResponse.name = `${user.first_name} ${user.last_name}`.trim();
+        return {
+            user: userResponse,
+            accessToken: tokenService.generateAccessToken(
+                user.op_user_id, 'Operational', user.user_role, user.department_id || null, user.must_change_password, user.has_global_access || false),
+            refreshToken: await tokenService.generateRefreshToken(user.op_user_id, 'Operational'),
+        };
     }
 
     // ── GENERIC LOGIN ─────────────────────────────────────────────────────────
@@ -233,6 +270,10 @@ class AuthService {
         }
 
         const userData = result.rows[0];
+        if (userData.auth_source && userData.auth_source !== 'local') {
+            await auditService.logLoginAttempt(email, ipAddress, false);
+            throw new Error('This account signs in with your organisation account. Please use the organisation sign-in.');
+        }
         let user, userType, userId, role = null, departmentId = null, mustChangePassword = false, hasGlobalAccess = false;
 
         if (userData.table_type === 'client') {
@@ -281,9 +322,12 @@ class AuthService {
             }
 
             const result = await client.query(
-                `SELECT password_hash, email, first_name FROM ${table} WHERE ${idCol} = $1`, [userId]
+                `SELECT password_hash, email, first_name, auth_source FROM ${table} WHERE ${idCol} = $1`, [userId]
             );
             if (result.rows.length === 0) throw new Error('User not found.');
+            if (result.rows[0].auth_source !== 'local' || !result.rows[0].password_hash) {
+                throw new Error('Your password is managed by your organisation. Change it on your Microsoft/Windows account.');
+            }
 
             const { password_hash, email, first_name } = result.rows[0];
             const isValid = await bcrypt.compare(currentPassword, password_hash);
@@ -331,14 +375,14 @@ class AuthService {
         let userRow = null, userType = null;
 
         const clientResult = await db.query(
-            `SELECT client_user_id AS id, first_name, email FROM client_user WHERE email = $1`, [email]
+            `SELECT client_user_id AS id, first_name, email FROM client_user WHERE email = $1 AND auth_source = 'local'`, [email]
         );
         if (clientResult.rows.length > 0) {
             userRow  = clientResult.rows[0];
             userType = 'Client';
         } else {
             const opResult = await db.query(
-                `SELECT op_user_id AS id, first_name, email FROM operational_user WHERE email = $1 AND is_deleted = false`,
+                `SELECT op_user_id AS id, first_name, email FROM operational_user WHERE email = $1 AND is_deleted = false AND auth_source = 'local'`,
                 [email]
             );
             if (opResult.rows.length > 0) {

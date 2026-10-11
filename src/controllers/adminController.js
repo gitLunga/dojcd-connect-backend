@@ -603,12 +603,14 @@ class AdminController {
                 });
             }
 
-            const { user, defaultPassword } = await adminService.createOperationalUser(req.body, req.user.userId);
+            const { user, defaultPassword, directory } = await adminService.createOperationalUser(req.body, req.user.userId);
 
             return res.status(201).json({
                 success: true,
-                message: `${user.first_name} ${user.last_name} has been added as a ${user.user_role}.`,
-                data: { user, default_password: defaultPassword, },
+                message: directory
+                    ? `${user.first_name} ${user.last_name} has been authorised as a ${user.user_role}. They sign in with their organisation account.`
+                    : `${user.first_name} ${user.last_name} has been added as a ${user.user_role}.`,
+                data: { user, default_password: defaultPassword, directory: !!directory },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {

@@ -6,6 +6,7 @@ const passwordPolicy = require('../utils/passwordPolicy');
 const emailService   = require('./emailService');
 const auditService   = require('./auditService');
 const { generateTempPassword } = require('../utils/tempPassword');
+const { getDirectoryConfig } = require('../directory/config');
 
 
 class AdminService {
@@ -1068,6 +1069,12 @@ class AdminService {
     // the API refuses every other request on that token until it has (middleware/authenticate).
     async createOperationalUser(userData, createdByOpUserId = null) {
         const email = userData.email.trim().toLowerCase();
+
+        // With directory sign-in nobody gets a password from us: this only pre-authorises the person.
+        // They are matched by email on their first sign-in and use their organisation account.
+        const { provider } = getDirectoryConfig();
+        if (provider !== 'local') return this._authoriseDirectoryStaff(userData, email, provider, createdByOpUserId);
+
         const tempPassword   = generateTempPassword();
         const hashedPassword = await bcrypt.hash(tempPassword, 12);
         const client = await db.connect();
@@ -1122,6 +1129,54 @@ class AdminService {
                 throw new Error('An operational user with this email already exists.');
             }
             throw new Error(`Error creating operational user: ${error.message}`);
+        } finally {
+            client.release();
+        }
+    }
+
+    async _authoriseDirectoryStaff(userData, email, provider, createdByOpUserId) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            const existing = await client.query(`SELECT op_user_id FROM operational_user WHERE lower(email) = $1`, [email]);
+            if (existing.rows.length > 0) throw new Error('An operational user with this email already exists.');
+
+            const result = await client.query(
+                `INSERT INTO operational_user (
+                    title, first_name, last_name, email, user_role, department_id,
+                    password_hash, must_change_password, auth_source, role_source
+                ) VALUES ($1, $2, $3, $4, $5, $6, NULL, false, $7, 'manual')
+                 RETURNING op_user_id, title, first_name, last_name, email, user_role, department_id, created_at`,
+                [
+                    userData.title?.trim() || null,
+                    userData.first_name.trim(),
+                    userData.last_name.trim(),
+                    email,
+                    userData.user_role,
+                    userData.department_id?.trim() || null,
+                    provider,
+                ]
+            );
+            const user = result.rows[0];
+
+            await auditService.log(client, {
+                actorId:    createdByOpUserId || user.op_user_id,
+                actorType:  createdByOpUserId ? 'Operational' : 'System',
+                action:     'OPERATIONAL_USER_CREATED',
+                entityType: 'operational_user',
+                entityId:   user.op_user_id,
+                newValue:   { email, user_role: user.user_role, department_id: user.department_id, via: 'pre-authorised for directory sign-in' },
+            });
+
+            await client.query('COMMIT');
+            return { user, defaultPassword: null, directory: true };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            if (error.message.includes('already exists') || error.message.includes('duplicate key')) {
+                throw new Error('An operational user with this email already exists.');
+            }
+            throw new Error(`Error authorising operational user: ${error.message}`);
         } finally {
             client.release();
         }
@@ -1213,12 +1268,15 @@ class AdminService {
             passwordPolicy.enforce(newPassword);
 
             const result = await db.query(
-                `SELECT password_hash, email, first_name FROM operational_user WHERE op_user_id = $1`,
+                `SELECT password_hash, email, first_name, auth_source FROM operational_user WHERE op_user_id = $1`,
                 [userId]
             );
             if (result.rows.length === 0) throw new Error('User not found.');
 
             const user = result.rows[0];
+            if (user.auth_source !== 'local' || !user.password_hash) {
+                throw new Error('This account signs in through the organisation directory, so its password is not managed here.');
+            }
 
             const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
             if (!isMatch) throw new Error('Current password is incorrect.');

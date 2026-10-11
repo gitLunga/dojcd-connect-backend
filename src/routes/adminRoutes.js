@@ -1,6 +1,7 @@
 const express      = require('express');
 const router       = express.Router();
 const adminController = require('../controllers/adminController');
+const directoryController = require('../controllers/directoryController');
 const authenticate    = require('../middleware/authenticate');
 const requireRoles    = require('../middleware/authorize');
 
@@ -50,6 +51,11 @@ router.patch('/operational-users/:id/change-password', (req, res) => adminContro
 router.patch('/operational-users/:id/promote',         (req, res) => adminController.promoteToSuperAdmin(req, res));
 router.patch('/operational-users/:id/demote',          (req, res) => adminController.demoteSuperAdmin(req, res));
 router.patch('/operational-users/:id/global-access',   (req, res) => adminController.setGlobalAccess(req, res));
+
+// ── Directory (AD / Entra ID) ─────────────────────────────────────────────────
+// Pulls the people in the staff groups into the system and switches off group-granted accounts whose
+// person left the group. ?dryRun=true shows what would change without changing it.
+router.post('/directory/sync', (req, res) => directoryController.sync(req, res));
 
 // ── Departments ───────────────────────────────────────────────────────────────
 router.get('/departments',         (req, res) => adminController.getDepartments(req, res));

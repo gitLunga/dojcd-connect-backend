@@ -6,15 +6,20 @@
 //   npm run create-admin -- --email jane@dojcd.gov.za --first-name Jane --last-name Doe
 //   ADMIN_EMAIL=jane@dojcd.gov.za ADMIN_FIRST_NAME=Jane ADMIN_LAST_NAME=Doe npm run create-admin
 //
-// Prints a random one-time password exactly once. The account must change it at first
+// Local mode prints a random one-time password exactly once; the account must change it at first
 // sign-in (the API refuses everything else until it does).
+//
+// With AUTH_PROVIDER=ldap or entra there is no password at all: the Admin is pre-authorised and is
+// matched by email the first time they sign in with their organisation account.
+//   AUTH_PROVIDER=entra npm run create-admin -- --email jane@dojcd.gov.za --first-name Jane --last-name Doe
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function parseAdminArgs(argv = [], env = {}) {
     const flags = {};
     for (let i = 0; i < argv.length; i++) {
-        if (argv[i].startsWith('--')) flags[argv[i].slice(2)] = argv[++i];
+        if (argv[i] === '--directory') flags.directory = true;
+        else if (argv[i].startsWith('--')) flags[argv[i].slice(2)] = argv[++i];
     }
 
     const email     = (flags.email || env.ADMIN_EMAIL || '').trim().toLowerCase();
@@ -26,13 +31,34 @@ function parseAdminArgs(argv = [], env = {}) {
     }
     if (!EMAIL_RE.test(email)) throw new Error(`"${email}" is not a valid email address.`);
 
-    return { email, firstName, lastName };
+    // Under AUTH_PROVIDER=ldap|entra the account has no password and signs in through the directory.
+    const provider = String(env.AUTH_PROVIDER || 'local').toLowerCase();
+    if (flags.directory && provider === 'local') {
+        throw new Error('--directory needs AUTH_PROVIDER=ldap or AUTH_PROVIDER=entra.');
+    }
+    return { email, firstName, lastName, ...(provider !== 'local' ? { directory: provider } : {}) };
 }
 
-async function createAdmin({ email, firstName, lastName }, { db, bcrypt, generateTempPassword, auditService }) {
+async function createAdmin({ email, firstName, lastName, directory }, { db, bcrypt, generateTempPassword, auditService }) {
     const existing = await db.query(`SELECT 1 FROM operational_user WHERE email = $1`, [email]);
     if (existing.rows.length > 0) {
         throw new Error(`An operational user with the email ${email} already exists.`);
+    }
+
+    if (directory) {
+        const { rows: [user] } = await db.query(
+            `INSERT INTO operational_user
+                 (first_name, last_name, email, user_role, password_hash, must_change_password, is_super_admin, auth_source, role_source)
+             VALUES ($1, $2, $3, 'Admin', NULL, false, true, $4, 'manual')
+             RETURNING op_user_id`,
+            [firstName, lastName, email, directory]
+        );
+        await auditService.log(db, {
+            actorId: user.op_user_id, actorType: 'System', action: 'OPERATIONAL_USER_CREATED',
+            entityType: 'operational_user', entityId: user.op_user_id,
+            newValue: { email, user_role: 'Admin', via: `create-admin script (${directory} sign-in)` },
+        });
+        return { opUserId: user.op_user_id, tempPassword: null, directory };
     }
 
     const tempPassword = generateTempPassword();
@@ -72,8 +98,12 @@ async function main() {
             auditService:         require('../services/auditService'),
         });
         console.log(`\n✅ Admin created (id ${opUserId}): ${args.email}`);
-        console.log(`   One-time password: ${tempPassword}`);
-        console.log('   Shown only once — they must change it at first sign-in.\n');
+        if (tempPassword) {
+            console.log(`   One-time password: ${tempPassword}`);
+            console.log('   Shown only once — they must change it at first sign-in.\n');
+        } else {
+            console.log(`   No password: they sign in with their organisation account (${args.directory}).\n`);
+        }
     } finally {
         await db.end();
     }
