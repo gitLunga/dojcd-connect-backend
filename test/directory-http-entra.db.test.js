@@ -17,6 +17,7 @@ const { startMockEntra, person, TENANT, CLIENT_ID, SECRET, REDIRECT } = require(
 
 const ADMIN_PAGE  = 'https://admin.example.test/auth/callback';
 const CLIENT_PAGE = 'https://client.example.test/auth/callback';
+const MOBILE_LINK = 'dojcdconnect://auth/callback';
 const ADMINS   = { id: 'a0a0a0a0-0000-4000-8000-000000000001', displayName: 'DOJCD-Admins' };
 const MANAGERS = { id: 'b0b0b0b0-0000-4000-8000-000000000002', displayName: 'DOJCD-Managers' };
 
@@ -57,7 +58,7 @@ describe('Microsoft Entra ID sign-in over HTTP (real PostgreSQL, mock Entra ID)'
         Object.assign(process.env, {
             AUTH_PROVIDER: 'entra', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT_ID, ENTRA_CLIENT_SECRET: SECRET,
             ENTRA_REDIRECT_URI: REDIRECT, ENTRA_AUTHORITY_HOST: idp.url, ENTRA_GRAPH_HOST: idp.url,
-            AUTH_ALLOWED_REDIRECTS: `${ADMIN_PAGE},${CLIENT_PAGE}`,
+            AUTH_ALLOWED_REDIRECTS: `${ADMIN_PAGE},${CLIENT_PAGE},${MOBILE_LINK}`,
             AD_GROUP_ADMIN: 'DOJCD-Admins', AD_GROUP_MANAGER: MANAGERS.id,
             SLA_ALERT_SCHEDULE: 'off', UPLOADS_DIR: path.join(os.tmpdir(), `dojcd-uploads-entra-${process.pid}`),
         });
@@ -175,7 +176,22 @@ describe('Microsoft Entra ID sign-in over HTTP (real PostgreSQL, mock Entra ID)'
             assert.equal(res.location, null, evil);
         }
         assert.equal((await call('GET', `/api/auth/entra/login?audience=nobody&redirect=${encodeURIComponent(ADMIN_PAGE)}`)).status, 400);
+
+        // The mobile app's own link is allowed exactly; another app (or host, or path) on the same scheme-less "origin" is not.
+        for (const evil of ['evil://auth/callback', 'dojcdconnect://evil/callback', 'dojcdconnect://auth/steal', 'https://auth/callback', 'exp://192.168.0.5:8081/--/auth/callback']) {
+            const res = await call('GET', `/api/auth/entra/login?audience=client&redirect=${encodeURIComponent(evil)}`);
+            assert.equal(res.status, 400, evil);
+        }
         assert.equal((await one(`SELECT count(*)::int AS n FROM directory_login_state`)).n, 0);
+    });
+
+    it('the mobile app can sign in through its own app link', async () => {
+        const { back } = await browserSignIn(person({ groups: [] }), { audience: 'client', redirect: MOBILE_LINK });
+        assert.equal(back.protocol, 'dojcdconnect:');
+        assert.equal(back.host + back.pathname, 'auth/callback');
+        const session = await exchange(back.searchParams.get('ticket'));
+        assert.equal(session.status, 200, session.text);
+        assert.equal(session.json.data.user.registration_status, 'Pending');
     });
 
     it('a person with no staff group goes back with an explanation and gets no ticket', async () => {

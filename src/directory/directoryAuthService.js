@@ -67,7 +67,9 @@ function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }
     function checkRedirect(redirect) {
         let target;
         try { target = new URL(redirect); } catch (_) { throw new DirectoryError('BAD_REQUEST', 'A valid redirect address is required.'); }
-        const same = (a, b) => a.origin === b.origin && a.pathname === b.pathname;
+        // Compare scheme + host + path, not URL.origin: for app links such as dojcdconnect://auth/callback the
+        // origin is the string "null" for EVERY such address, which would let any other app scheme through.
+        const same = (a, b) => a.protocol === b.protocol && a.host === b.host && a.pathname === b.pathname;
         const allowed = cfg.allowedRedirects.some((entry) => { try { return same(target, new URL(entry)); } catch (_) { return false; } });
         if (!allowed) throw new DirectoryError('BAD_REQUEST', 'That redirect address is not allowed.');
         target.hash = '';

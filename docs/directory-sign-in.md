@@ -50,7 +50,7 @@ AD_GROUP_MANAGER=DOJCD-Managers
 AD_GROUP_FINANCE=DOJCD-Finance
 ```
 
-`AUTH_ALLOWED_REDIRECTS` is the list of front-end pages a person may be sent back to. Anything else is refused, so the sign-in cannot be used to bounce someone to another site. The front-ends use `/auth/callback` on their own address.
+`AUTH_ALLOWED_REDIRECTS` is the list of front-end pages a person may be sent back to. Anything else is refused, so the sign-in cannot be used to bounce someone to another site. The front-ends use `/auth/callback` on their own address. The mobile app uses its own app link, `dojcdconnect://auth/callback`: add it to the list too (scheme, host and path must all match exactly). Expo Go cannot use Microsoft sign-in because its link changes with your IP address; use a development or release build.
 
 *Optional, for the directory sync (section 6):* add **Application** permissions `User.Read.All` and `GroupMember.Read.All` and **grant admin consent**. Sign-in itself never needs them.
 
