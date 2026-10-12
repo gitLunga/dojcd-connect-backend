@@ -19,14 +19,14 @@ const readForm = (req) => new Promise((resolve) => {
     req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(raw))));
 });
 
-async function startMockEntra({ pageSize = 2 } = {}) {
+async function startMockEntra({ pageSize = 2, redirectUri = REDIRECT } = {}) {
     const good = await generateKeyPair('RS256');
     const rogue = await generateKeyPair('RS256');          // a key Microsoft does not publish
     const jwk = { ...(await exportJWK(good.publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
 
     const codes = new Map();            // authorization code -> what the browser sign-in produced
     const accessTokens = new Map();     // access token -> user
-    const mock = { codes, failGraph: false, failGroups: false, failKeys: false, tokenRequests: [], users: [], groupMembers: {} };
+    const mock = { codes, signInAs: null, failGraph: false, failGroups: false, failKeys: false, tokenRequests: [], users: [], groupMembers: {} };
     let base = '';
 
     const issuer = () => `${base}/${TENANT}/v2.0`;
@@ -65,6 +65,18 @@ async function startMockEntra({ pageSize = 2 } = {}) {
             return mock.failKeys ? json(res, 500, {}) : json(res, 200, { keys: [jwk] });
         }
 
+        // Microsoft's sign-in page, auto-approved for whoever `mock.signInAs` is (used when a real browser drives the app).
+        if (url.pathname === `/${TENANT}/oauth2/v2.0/authorize`) {
+            const q = url.searchParams;
+            const back = new URL(q.get('redirect_uri') || redirectUri);
+            if (q.get('client_id') !== CLIENT_ID || q.get('code_challenge_method') !== 'S256') { res.writeHead(400); return res.end('bad authorize request'); }
+            if (!mock.signInAs) back.searchParams.set('error', 'access_denied');
+            else back.searchParams.set('code', mock.issueCode(mock.signInAs, { nonce: q.get('nonce'), challenge: q.get('code_challenge') }));
+            back.searchParams.set('state', q.get('state'));
+            res.writeHead(302, { location: back.toString() });
+            return res.end();
+        }
+
         if (url.pathname === `/${TENANT}/oauth2/v2.0/token` && req.method === 'POST') {
             const f = await readForm(req);
             mock.tokenRequests.push(f);
@@ -76,7 +88,7 @@ async function startMockEntra({ pageSize = 2 } = {}) {
             }
 
             const entry = codes.get(f.code);
-            if (!entry || entry.used || f.redirect_uri !== REDIRECT) return json(res, 400, { error: 'invalid_grant' });
+            if (!entry || entry.used || f.redirect_uri !== redirectUri) return json(res, 400, { error: 'invalid_grant' });
             const challenge = crypto.createHash('sha256').update(f.code_verifier || '').digest('base64url');
             if (challenge !== entry.challenge) return json(res, 400, { error: 'invalid_grant', error_description: 'PKCE verification failed' });
             entry.used = true;

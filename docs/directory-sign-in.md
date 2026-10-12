@@ -103,7 +103,7 @@ Rules:
 * **The strongest group wins.** In `DOJCD-Managers` and `DOJCD-Finance` means Finance.
 * **Groups beat hand-assigned roles.** If someone is in a mapped group, the group decides on every sign-in.
 * **No mapped group:** a role an Admin set by hand is kept. A role that came from a group is **withdrawn** when the person leaves it: the account is switched off (not deleted, so history stays attached) and they can no longer sign in as staff. Putting them back in the group switches it on again.
-* **Super Admin:** if `AD_GROUP_SUPER_ADMIN` is set, the flag follows that group for group-managed accounts. If it is empty, Super Admin is managed in the dashboard as before.
+* **Super Admin:** *Add User* and *Sync from directory* in the dashboard are for Super Admins. A person who is only in `AD_GROUP_ADMIN` is an Admin, not a Super Admin. Either set `AD_GROUP_SUPER_ADMIN` (the flag then follows that group for group-managed accounts), or create the first one with `create-admin` (section 5, which makes a Super Admin) and promote others in the dashboard as before.
 * Changes in AD take effect the next time the person signs in (or the next sync).
 * Someone who is both staff and a client can use both portals: staff and client accounts are separate, chosen by which portal they sign in to.
 
