@@ -190,6 +190,12 @@ describe('catalogue categories (real PostgreSQL)', { skip: testDb.skip }, () => 
             assert.equal(relaxed.status, 201, 'an Admin can decide a category needs no hardware details');
         });
 
+        it('an item must have a contract length: that is said plainly instead of failing on insert', async () => {
+            const res = await call('POST', '/api/devices', { token: adminToken, body: laptop({ category_id: await categoryId('Laptops & Computers'), contract_duration_months: null }) });
+            assert.equal(res.status, 400);
+            assert.match(res.json.message, /Contract duration is required/);
+        });
+
         it('with no category it goes to Mobile Phones, as before this existed', async () => {
             const res = await call('POST', '/api/devices', { token: adminToken, body: { device_name: 'Galaxy A15', model: 'A155', manufacturer: 'Samsung', plan_name: 'Smart 5GB', monthly_cost: 299, contract_duration_months: 24 } });
             assert.equal(res.status, 201, res.text);

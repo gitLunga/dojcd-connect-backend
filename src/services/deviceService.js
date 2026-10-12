@@ -618,6 +618,10 @@ class DeviceService {
             if (data.monthly_cost === undefined || data.monthly_cost === null) {
                 errors.push('Monthly cost is required.');
             }
+            // The database does not allow an item without a contract length, so say so instead of failing on insert.
+            if (!data.contract_duration_months) {
+                errors.push('Contract duration is required (12, 24 or 36 months).');
+            }
         } else if (needsHardware && existing) {
             const model = data.model !== undefined ? data.model : existing.model;
             const manufacturer = data.manufacturer !== undefined ? data.manufacturer : existing.manufacturer;
