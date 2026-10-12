@@ -1,5 +1,14 @@
 // services/deviceService.js
 const db = require('../config/db');
+const categoryService = require('./categoryService');
+
+// Every catalogue read returns the item together with its category.
+const ITEM_COLUMNS = `d.device_id, d.device_name, d.model, d.manufacturer,
+                    d.plan_name, d.plan_details, d.monthly_cost,
+                    d.contract_duration_months, d.status,
+                    d.category_id, c.name AS category_name,
+                    d.created_at, d.updated_at`;
+const ITEM_FROM = `FROM device_catalog d JOIN device_category c ON c.category_id = d.category_id`;
 
 // ─── Utility: map raw errors to friendly messages ─────────────────────────────
 function friendlyError(error, context = 'operation') {
@@ -28,12 +37,8 @@ class DeviceService {
     async getAllDevices(filters = {}) {
         try {
             let query = `
-                SELECT 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at
-                FROM device_catalog
+                SELECT ${ITEM_COLUMNS}
+                ${ITEM_FROM}
                 WHERE 1=1
             `;
 
@@ -42,8 +47,14 @@ class DeviceService {
 
             if (filters.status) {
                 paramCount++;
-                query += ` AND status = $${paramCount}`;
+                query += ` AND d.status = $${paramCount}`;
                 params.push(filters.status);
+            }
+
+            if (filters.category_id) {
+                paramCount++;
+                query += ` AND d.category_id = $${paramCount}`;
+                params.push(parseInt(filters.category_id, 10) || 0);
             }
 
             if (filters.manufacturer) {
@@ -107,13 +118,9 @@ class DeviceService {
     async getDeviceById(deviceId) {
         try {
             const result = await db.query(
-                `SELECT 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at
-                FROM device_catalog 
-                WHERE device_id = $1`,
+                `SELECT ${ITEM_COLUMNS}
+                ${ITEM_FROM}
+                WHERE d.device_id = $1`,
                 [deviceId]
             );
 
@@ -137,14 +144,10 @@ class DeviceService {
             }
 
             const result = await db.query(
-                `SELECT 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at
-                FROM device_catalog 
-                WHERE status = $1
-                ORDER BY monthly_cost ASC`,
+                `SELECT ${ITEM_COLUMNS}
+                ${ITEM_FROM}
+                WHERE d.status = $1
+                ORDER BY d.monthly_cost ASC`,
                 [status]
             );
 
@@ -165,24 +168,21 @@ class DeviceService {
             const term = `%${searchTerm.toLowerCase()}%`;
 
             const result = await db.query(
-                `SELECT 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at
-                FROM device_catalog 
+                `SELECT ${ITEM_COLUMNS}
+                ${ITEM_FROM}
                 WHERE 
-                    LOWER(device_name) LIKE $1 OR
-                    LOWER(model) LIKE $1 OR
-                    LOWER(manufacturer) LIKE $1 OR
-                    LOWER(plan_name) LIKE $1 OR
-                    LOWER(plan_details) LIKE $1
+                    LOWER(d.device_name) LIKE $1 OR
+                    LOWER(d.model) LIKE $1 OR
+                    LOWER(d.manufacturer) LIKE $1 OR
+                    LOWER(d.plan_name) LIKE $1 OR
+                    LOWER(d.plan_details) LIKE $1 OR
+                    LOWER(c.name) LIKE $1
                 ORDER BY 
                     CASE 
-                        WHEN status = 'active' THEN 1
-                        WHEN status = 'inactive' THEN 2
+                        WHEN d.status = 'active' THEN 1
+                        WHEN d.status = 'inactive' THEN 2
                         ELSE 3
-                    END, monthly_cost ASC`,
+                    END, d.monthly_cost ASC`,
                 [term]
             );
 
@@ -199,41 +199,46 @@ class DeviceService {
         try {
             await client.query('BEGIN');
 
-            // Check for duplicate device (same model and manufacturer)
-            const duplicateCheck = await client.query(
-                `SELECT device_id FROM device_catalog 
-                WHERE model = $1 AND manufacturer = $2`,
-                [deviceData.model, deviceData.manufacturer]
-            );
+            const category = await categoryService.resolveForItem(client, deviceData.category_id);
+            if (!category.is_active) throw new Error(`The category "${category.name}" is switched off. Choose another category.`);
 
-            if (duplicateCheck.rows.length > 0) {
-                throw new Error('A device with this model and manufacturer already exists.');
+            // Validate required fields (a data package or service needs no model or manufacturer)
+            this.validateDeviceData(deviceData, 'create', category);
+
+            // Check for duplicate device (same model and manufacturer)
+            if (deviceData.model?.trim() && deviceData.manufacturer?.trim()) {
+                const duplicateCheck = await client.query(
+                    `SELECT device_id FROM device_catalog 
+                    WHERE model = $1 AND manufacturer = $2`,
+                    [deviceData.model.trim(), deviceData.manufacturer.trim()]
+                );
+
+                if (duplicateCheck.rows.length > 0) {
+                    throw new Error('A device with this model and manufacturer already exists.');
+                }
             }
 
-            // Validate required fields
-            this.validateDeviceData(deviceData, 'create');
-
-            const result = await client.query(
+            const inserted = await client.query(
                 `INSERT INTO device_catalog (
-                    device_name, model, manufacturer, plan_name,
+                    category_id, device_name, model, manufacturer, plan_name,
                     plan_details, monthly_cost, contract_duration_months,
                     status
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at`,
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING device_id`,
                 [
+                    category.category_id,
                     deviceData.device_name.trim(),
-                    deviceData.model.trim(),
-                    deviceData.manufacturer.trim(),
+                    deviceData.model?.trim() || null,
+                    deviceData.manufacturer?.trim() || null,
                     deviceData.plan_name.trim(),
                     deviceData.plan_details?.trim() || null,
                     parseFloat(deviceData.monthly_cost),
                     deviceData.contract_duration_months || null,
-                    deviceData.status || 'Active'
+                    String(deviceData.status || 'active').toLowerCase()
                 ]
+            );
+            const result = await client.query(
+                `SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE d.device_id = $1`, [inserted.rows[0].device_id]
             );
 
             await client.query('COMMIT');
@@ -249,7 +254,7 @@ class DeviceService {
             console.error('Error creating device:', error);
             return {
                 success: false,
-                message: error.message.includes('already exists') || error.message.includes('required')
+                message: /already exists|required|category|must be/i.test(error.message)
                     ? error.message
                     : friendlyError(error, 'creating device')
             };
@@ -275,31 +280,39 @@ class DeviceService {
                 throw new Error('Device not found.');
             }
 
+            // The item's category after this update (moving an item to another category is allowed)
+            const category = await categoryService.resolveForItem(client, updateData.category_id ?? existingDevice.rows[0].category_id);
+            const movingCategory = updateData.category_id !== undefined && parseInt(updateData.category_id, 10) !== existingDevice.rows[0].category_id;
+            if (movingCategory && !category.is_active) throw new Error(`The category "${category.name}" is switched off. Choose another category.`);
+            if (movingCategory) updateData = { ...updateData, category_id: category.category_id };
+
             // Check for duplicate if model or manufacturer is being updated
             if (updateData.model || updateData.manufacturer) {
                 const model = updateData.model || existingDevice.rows[0].model;
                 const manufacturer = updateData.manufacturer || existingDevice.rows[0].manufacturer;
 
-                const duplicateCheck = await client.query(
-                    `SELECT device_id FROM device_catalog 
-                    WHERE model = $1 AND manufacturer = $2 AND device_id != $3`,
-                    [model, manufacturer, deviceId]
-                );
+                if (model && manufacturer) {
+                    const duplicateCheck = await client.query(
+                        `SELECT device_id FROM device_catalog 
+                        WHERE model = $1 AND manufacturer = $2 AND device_id != $3`,
+                        [model, manufacturer, deviceId]
+                    );
 
-                if (duplicateCheck.rows.length > 0) {
-                    throw new Error('A device with this model and manufacturer already exists.');
+                    if (duplicateCheck.rows.length > 0) {
+                        throw new Error('A device with this model and manufacturer already exists.');
+                    }
                 }
             }
 
-            // Validate update data
-            this.validateDeviceData(updateData, 'update');
+            // Validate update data, as it will stand after the update
+            this.validateDeviceData(updateData, 'update', category, existingDevice.rows[0]);
 
             // Build dynamic update query
             const updates = [];
             const values = [];
             let paramCount = 1;
 
-            const fields = ['device_name', 'model', 'manufacturer', 'plan_name',
+            const fields = ['category_id', 'device_name', 'model', 'manufacturer', 'plan_name',
                 'plan_details', 'monthly_cost', 'contract_duration_months', 'status'];
 
             fields.forEach(field => {
@@ -324,16 +337,13 @@ class DeviceService {
                 UPDATE device_catalog 
                 SET ${updates.join(', ')}
                 WHERE device_id = $${paramCount}
-                RETURNING 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months, status,
-                    created_at, updated_at
+                RETURNING device_id
             `;
 
             values.push(deviceId);
 
-            const result = await client.query(query, values);
+            await client.query(query, values);
+            const result = await client.query(`SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE d.device_id = $1`, [deviceId]);
 
             await client.query('COMMIT');
 
@@ -349,7 +359,7 @@ class DeviceService {
 
             return {
                 success: false,
-                message: error.message.includes('not found') || error.message.includes('already exists') || error.message.includes('required')
+                message: /not found|already exists|required|category|must be/i.test(error.message)
                     ? error.message
                     : friendlyError(error, 'updating device')
             };
@@ -488,12 +498,25 @@ class DeviceService {
                     END
             `);
 
+            // Items by category
+            const categoryStats = await db.query(`
+                SELECT c.category_id, c.name AS category_name,
+                       COUNT(d.device_id)::int AS total_items,
+                       COUNT(d.device_id) FILTER (WHERE d.status = 'active')::int AS active_items,
+                       COALESCE(AVG(d.monthly_cost), 0) AS avg_cost
+                FROM device_category c
+                LEFT JOIN device_catalog d ON d.category_id = c.category_id
+                GROUP BY c.category_id
+                ORDER BY c.sort_order, lower(c.name)
+            `);
+
             const [mainStats] = await Promise.all([db.query(statsQuery)]);
 
             return {
                 success: true,
                 data: {
                     summary: mainStats.rows[0],
+                    by_category: categoryStats.rows,
                     by_manufacturer: manufacturerStats.rows,
                     by_price_range: priceRangeStats.rows,
                     by_contract: contractStats.rows
@@ -510,12 +533,13 @@ class DeviceService {
         try {
             const result = await db.query(`
                 SELECT 
-                    device_id, device_name, model, manufacturer,
-                    plan_name, plan_details, monthly_cost,
-                    contract_duration_months
-                FROM device_catalog
-                WHERE status = 'active'
-                ORDER BY monthly_cost ASC
+                    d.device_id, d.device_name, d.model, d.manufacturer,
+                    d.plan_name, d.plan_details, d.monthly_cost,
+                    d.contract_duration_months,
+                    d.category_id, c.name AS category_name
+                ${ITEM_FROM}
+                WHERE d.status = 'active' AND c.is_active
+                ORDER BY d.monthly_cost ASC
             `);
 
             return result.rows;
@@ -571,18 +595,22 @@ class DeviceService {
     }
 
     // ─── VALIDATION HELPER ───────────────────────────────────────────────────
-    validateDeviceData(data, operation = 'create') {
+    // `category` decides whether a model and manufacturer are needed (phones, laptops...) or not (a data package).
+    // On update, `existing` is the stored row, so a move into a hardware category is checked against what the
+    // item will hold afterwards.
+    validateDeviceData(data, operation = 'create', category = null, existing = null) {
         const errors = [];
+        const needsHardware = category ? category.requires_hardware_details : true;
 
         if (operation === 'create') {
             if (!data.device_name?.trim()) {
-                errors.push('Device name is required.');
+                errors.push('Name is required.');
             }
-            if (!data.model?.trim()) {
-                errors.push('Model is required.');
+            if (needsHardware && !data.model?.trim()) {
+                errors.push(`Model is required for ${category?.name || 'this category'}.`);
             }
-            if (!data.manufacturer?.trim()) {
-                errors.push('Manufacturer is required.');
+            if (needsHardware && !data.manufacturer?.trim()) {
+                errors.push(`Manufacturer is required for ${category?.name || 'this category'}.`);
             }
             if (!data.plan_name?.trim()) {
                 errors.push('Plan name is required.');
@@ -590,6 +618,11 @@ class DeviceService {
             if (data.monthly_cost === undefined || data.monthly_cost === null) {
                 errors.push('Monthly cost is required.');
             }
+        } else if (needsHardware && existing) {
+            const model = data.model !== undefined ? data.model : existing.model;
+            const manufacturer = data.manufacturer !== undefined ? data.manufacturer : existing.manufacturer;
+            if (!String(model || '').trim()) errors.push(`Model is required for ${category.name}.`);
+            if (!String(manufacturer || '').trim()) errors.push(`Manufacturer is required for ${category.name}.`);
         }
 
         // Common validations for both create and update

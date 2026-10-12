@@ -64,12 +64,14 @@ class ApplicationService {
     async getAvailableDevices() {
         try {
             const result = await db.query(`
-                SELECT device_id, device_name, model, manufacturer,
-                       plan_name, plan_details, monthly_cost,
-                       contract_duration_months, status, stock_quantity
-                FROM device_catalog
-                WHERE status = 'active'
-                ORDER BY monthly_cost
+                SELECT d.device_id, d.device_name, d.model, d.manufacturer,
+                       d.plan_name, d.plan_details, d.monthly_cost,
+                       d.contract_duration_months, d.status, d.stock_quantity,
+                       d.category_id, c.name AS category_name
+                FROM device_catalog d
+                JOIN device_category c ON c.category_id = d.category_id
+                WHERE d.status = 'active' AND c.is_active
+                ORDER BY d.monthly_cost
             `);
             return result.rows;
         } catch (error) {
@@ -80,7 +82,10 @@ class ApplicationService {
     async getDeviceById(deviceId) {
         try {
             const result = await db.query(
-                `SELECT * FROM device_catalog WHERE device_id = $1 AND status = 'active'`,
+                `SELECT d.*, c.name AS category_name
+                   FROM device_catalog d
+                   JOIN device_category c ON c.category_id = d.category_id
+                  WHERE d.device_id = $1 AND d.status = 'active' AND c.is_active`,
                 [deviceId]
             );
 

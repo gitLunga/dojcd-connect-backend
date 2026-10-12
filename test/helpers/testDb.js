@@ -17,7 +17,7 @@ const SCHEMA_FILES = [
     ['migrations/003_add_password_reset_token.sql', true], ['migrations/004_inventory_and_resubmit.sql', true],
     ['migrations/005_rename_s3_path_to_file_path.sql', true], ['migrations/006_returns_delegation_budget.sql', true],
     ['migrations/007_client_user_deactivated_status.sql', true], ['src/scripts/migrate-department-isolation.sql', true],
-    ['migrations/008_seed_doj_departments.sql', true], ['migrations/009_directory_auth.sql'],
+    ['migrations/008_seed_doj_departments.sql', true], ['migrations/009_directory_auth.sql'], ['migrations/010_catalogue_categories.sql'],
 ];
 
 const pgConfig = (database) => ({

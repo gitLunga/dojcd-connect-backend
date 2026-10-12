@@ -12,6 +12,7 @@ class DeviceController {
             const filters = {
                 status: req.query.status,
                 manufacturer: req.query.manufacturer,
+                category_id: req.query.category_id,
                 min_price: req.query.min_price,
                 max_price: req.query.max_price,
                 limit: req.query.limit,

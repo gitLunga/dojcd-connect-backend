@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node --test test/files.test.js test/secrets.test.js test/temp-password.test.js test/operational-registration.test.js test/must-change-password.test.js test/directory-config.test.js test/ldap-provider.test.js test/entra-provider.test.js test/directory-provisioning.db.test.js test/directory-http-ldap.db.test.js test/directory-http-entra.db.test.js",
+    "test": "node --test test/files.test.js test/secrets.test.js test/temp-password.test.js test/operational-registration.test.js test/must-change-password.test.js test/directory-config.test.js test/ldap-provider.test.js test/entra-provider.test.js test/directory-provisioning.db.test.js test/directory-http-ldap.db.test.js test/directory-http-entra.db.test.js test/catalogue-categories.db.test.js",
     "start": "node server.js && node scripts/init-folders.js",
     "dev": "nodemon server.js && node scripts/init-folders.js",
     "build": "npm install",

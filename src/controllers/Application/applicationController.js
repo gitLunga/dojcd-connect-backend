@@ -49,7 +49,7 @@ const applicationController = {
             return ok(res, 'Device details retrieved successfully.', { device });
         } catch (error) {
             console.error('Get device details error:', error);
-            const status = error.message.includes('no longer available') ? 404 : 500;
+            const status = /no longer (available|active)/.test(error.message) ? 404 : 500;
             return fail(res, error.message, status);
         }
     },

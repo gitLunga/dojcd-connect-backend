@@ -94,6 +94,7 @@ async function fetchInventoryData() {
         SELECT
             d.device_id,
             d.device_name,
+            c.name AS category_name,
             d.model,
             d.manufacturer,
             d.plan_name,
@@ -113,10 +114,11 @@ async function fetchInventoryData() {
                 ELSE (d.stock_quantity - COUNT(o.order_id) FILTER (WHERE o.order_status IN ('Processing','Dispatched','Delivered')))::TEXT
             END AS available_stock
         FROM device_catalog d
+        JOIN device_category c ON c.category_id = d.category_id
         LEFT JOIN application a ON a.device_id = d.device_id
         LEFT JOIN "order"     o ON o.application_id = a.application_id
-        GROUP BY d.device_id
-        ORDER BY d.device_name
+        GROUP BY d.device_id, c.name
+        ORDER BY c.name, d.device_name
     `);
     return result.rows;
 }
@@ -261,6 +263,7 @@ async function generateInventoryReport(adminUserId) {
     const columns = [
         { key: 'device_id',               label: 'Device ID' },
         { key: 'device_name',             label: 'Device Name' },
+        { key: 'category_name',           label: 'Category' },
         { key: 'model',                   label: 'Model' },
         { key: 'manufacturer',            label: 'Manufacturer' },
         { key: 'plan_name',               label: 'Plan' },
