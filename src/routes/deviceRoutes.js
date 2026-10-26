@@ -1,12 +1,19 @@
 const express        = require('express');
 const router         = express.Router();
 const DeviceController = require('../controllers/deviceController');
+const categoryController = require('../controllers/categoryController');
 const authenticate   = require('../middleware/authenticate');
 const requireRoles   = require('../middleware/authorize');
 
 const deviceController = new DeviceController();
 
 router.use(authenticate);
+
+// Categories (Mobile Phones, Tablets, Laptops & Computers ...): everyone reads, Admins manage
+router.get('/device-categories',        categoryController.list);
+router.post('/device-categories',       requireRoles('Admin'), categoryController.create);
+router.put('/device-categories/:id',    requireRoles('Admin'), categoryController.update);
+router.delete('/device-categories/:id', requireRoles('Admin'), categoryController.remove);
 
 // Read-only — any authenticated user (clients browse, admins manage)
 router.get('/devices',               deviceController.getAllDevices);

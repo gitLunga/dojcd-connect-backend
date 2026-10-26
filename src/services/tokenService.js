@@ -1,14 +1,11 @@
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const db     = require('../config/db');
+const { assertJwtSecret } = require('../config/secrets');
 
-const ACCESS_SECRET   = process.env.JWT_SECRET;
+const ACCESS_SECRET   = assertJwtSecret();   // throws if missing; in production also if shorter than 32 chars
 const ACCESS_TTL      = '15m';
 const REFRESH_TTL_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-if (!ACCESS_SECRET) {
-    throw new Error('JWT_SECRET environment variable is not set');
-}
 
 // ── Access token ──────────────────────────────────────────────────────────────
 
@@ -70,23 +67,26 @@ async function refreshTokens(rawToken) {
     let mustChangePassword = false;
     let hasGlobalAccess   = false;
 
+    // A removed, switched-off or (directory) de-grouped account must not keep renewing its session.
     if (userType === 'Operational') {
         const userResult = await db.query(
             `SELECT user_role, department_id, must_change_password, has_global_access FROM operational_user WHERE op_user_id = $1 AND is_deleted = false`,
             [userId]
         );
-        if (userResult.rows.length > 0) {
-            role              = userResult.rows[0].user_role;
-            departmentId      = userResult.rows[0].department_id || null;
-            mustChangePassword = userResult.rows[0].must_change_password || false;
-            hasGlobalAccess   = userResult.rows[0].has_global_access || false;
-        }
+        if (userResult.rows.length === 0) throw new Error('This account is no longer active. Please sign in again.');
+        role              = userResult.rows[0].user_role;
+        departmentId      = userResult.rows[0].department_id || null;
+        mustChangePassword = userResult.rows[0].must_change_password || false;
+        hasGlobalAccess   = userResult.rows[0].has_global_access || false;
     } else {
         const userResult = await db.query(
-            `SELECT department_id FROM client_user WHERE client_user_id = $1`,
+            `SELECT department_id, registration_status FROM client_user WHERE client_user_id = $1`,
             [userId]
         );
-        if (userResult.rows.length > 0) departmentId = userResult.rows[0].department_id || null;
+        if (userResult.rows.length === 0 || userResult.rows[0].registration_status === 'Deactivated') {
+            throw new Error('This account is no longer active. Please sign in again.');
+        }
+        departmentId = userResult.rows[0].department_id || null;
     }
 
     const accessToken  = generateAccessToken(userId, userType, role, departmentId, mustChangePassword, hasGlobalAccess);

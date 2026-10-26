@@ -1,5 +1,7 @@
 const authService   = require('../services/authService');
 const tokenService  = require('../services/tokenService');
+const directoryController = require('./directoryController');
+const { isDirectoryMode } = require('../directory/config');
 
 class AuthController {
 
@@ -63,26 +65,8 @@ class AuthController {
         }
     }
 
-    async registerOperational(req, res) {
-        try {
-            const user = await authService.registerOperationalUser(req.body, req.user?.userId);
-            return res.status(201).json({
-                success: true,
-                message: 'Operational user registration successful',
-                data: { user },
-                timestamp: new Date().toISOString(),
-            });
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message,
-                data: null,
-                timestamp: new Date().toISOString(),
-            });
-        }
-    }
-
     async loginClient(req, res) {
+        if (isDirectoryMode()) return directoryController.passwordLogin(req, res, 'client');
         try {
             const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
             const { user, accessToken, refreshToken } = await authService.loginClientUser(req.body, ip);
@@ -103,6 +87,7 @@ class AuthController {
     }
 
     async loginOperational(req, res) {
+        if (isDirectoryMode()) return directoryController.passwordLogin(req, res, 'staff');
         try {
             const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
             const { user, accessToken, refreshToken } = await authService.loginOperationalUser(req.body, ip);
@@ -123,6 +108,8 @@ class AuthController {
     }
 
     async login(req, res) {
+        // With directory sign-in the generic endpoint serves the client portal unless the caller says "staff".
+        if (isDirectoryMode()) return directoryController.passwordLogin(req, res, req.body?.audience === 'staff' ? 'staff' : 'client');
         try {
             const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
             const { user, accessToken, refreshToken } = await authService.loginUser(req.body, ip);
