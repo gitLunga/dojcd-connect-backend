@@ -30,7 +30,7 @@ const adFail = (res, next, sub) => {
 
 const unescapeFilter = (s) => s.replace(/\\([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 
-function startMockAd({ users = [], groups = [], servicePassword = 'service-secret', allowAnonymous = false } = {}) {
+function startMockAd({ users = [], groups = [], servicePassword = 'service-secret', allowAnonymous = false, port: listenPort = 0 } = {}) {
     const searches = [];                 // every filter the server received, for assertions
     const server = ldap.createServer();
     const lc = (s) => String(s).toLowerCase();
@@ -126,7 +126,7 @@ function startMockAd({ users = [], groups = [], servicePassword = 'service-secre
     server.unbind((req, res) => res.end());
 
     return new Promise((resolve) => {
-        server.listen(0, '127.0.0.1', () => {
+        server.listen(listenPort, '127.0.0.1', () => {
             const { port } = server.address();
             resolve({
                 url: `ldap://127.0.0.1:${port}`,

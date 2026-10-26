@@ -9,7 +9,8 @@
     "dev": "nodemon server.js && node scripts/init-folders.js",
     "build": "npm install",
     "create-admin": "node src/scripts/create-admin.js",
-    "sync-directory": "node src/scripts/sync-directory.js"
+    "sync-directory": "node src/scripts/sync-directory.js",
+    "dev:mock-directory": "node src/scripts/dev-mock-directory.js"
   },
   "keywords": [],
   "author": "",
