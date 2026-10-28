@@ -16,6 +16,7 @@ const {
 } = require('./ldapUtils');
 
 const IN_CHAIN = '1.2.840.113556.1.4.1941';   // LDAP_MATCHING_RULE_IN_CHAIN: follows nested group membership
+const PAGE_SIZE = 500;
 
 const USER_ATTRIBUTES = [
     'sAMAccountName', 'userPrincipalName', 'mail', 'givenName', 'sn', 'displayName',
@@ -72,10 +73,12 @@ function createLdapProvider(cfg, { ClientClass = Client, readFile = fs.readFileS
         }
     }
 
-    async function search(client, base, filter, attributes) {
+    // `paged` asks the server for the answer in pages: AD refuses to return more than 1000 entries in one go.
+    async function search(client, base, filter, attributes, { paged = false } = {}) {
         try {
             const { searchEntries } = await client.search(base, {
                 scope: 'sub', filter, attributes, explicitBufferAttributes: ['objectGUID'],
+                ...(paged ? { paged: { pageSize: PAGE_SIZE } } : {}),
             });
             return searchEntries;
         } catch (err) {
@@ -168,29 +171,34 @@ function createLdapProvider(cfg, { ClientClass = Client, readFile = fs.readFileS
         }
     }
 
+    // The DN of a group given as a DN, CN or sAMAccountName (null when no such group exists).
+    async function resolveGroupDn(svc, group) {
+        if (group.includes('=')) return group;
+        const e = escapeFilterValue(group);
+        const found = await search(svc, l.groupBaseDn, `(&(objectClass=group)(|(cn=${e})(sAMAccountName=${e})))`, ['cn']);
+        return found.length === 0 ? null : found[0].dn;
+    }
+
+    // Enabled people in the group, directly or through nested groups.
+    async function enabledMembers(svc, group) {
+        const groupDn = await resolveGroupDn(svc, group);
+        if (!groupDn) return [];
+        const members = await search(
+            svc, l.baseDn,
+            `(&(objectCategory=person)(objectClass=user)(memberOf:${IN_CHAIN}:=${escapeFilterValue(groupDn)}))`,
+            USER_ATTRIBUTES, { paged: true },
+        );
+        return members.filter((entry) => !isDisabled(entry.userAccountControl));
+    }
+
     // Everyone (directly or through nested groups) in the named group: used by the directory sync.
     // `group` is a group DN, CN or sAMAccountName.
     async function listGroupMembers(group) {
         const svc = await connect();
         try {
             await bindServiceAccount(svc);
-
-            let groupDn = group;
-            if (!group.includes('=')) {
-                const e = escapeFilterValue(group);
-                const found = await search(svc, l.groupBaseDn, `(&(objectClass=group)(|(cn=${e})(sAMAccountName=${e})))`, ['cn']);
-                if (found.length === 0) return [];
-                groupDn = found[0].dn;
-            }
-
-            const members = await search(
-                svc, l.baseDn,
-                `(&(objectCategory=person)(objectClass=user)(memberOf:${IN_CHAIN}:=${escapeFilterValue(groupDn)}))`,
-                USER_ATTRIBUTES,
-            );
             const profiles = [];
-            for (const entry of members) {
-                if (isDisabled(entry.userAccountControl)) continue;
+            for (const entry of await enabledMembers(svc, group)) {
                 profiles.push(toProfile(entry, await groupNames(svc, entry)));
             }
             return profiles;
@@ -199,7 +207,60 @@ function createLdapProvider(cfg, { ClientClass = Client, readFile = fs.readFileS
         }
     }
 
-    return { name: 'ldap', authenticate, listGroupMembers };
+    // Just the directory ids of the people in a group: one search, no per-person group lookups.
+    async function listGroupMemberIds(group) {
+        const svc = await connect();
+        try {
+            await bindServiceAccount(svc);
+            return (await enabledMembers(svc, group)).map((entry) => toProfile(entry, []).externalId);
+        } finally {
+            await safeUnbind(svc);
+        }
+    }
+
+    // Every enabled person who has an email address or a UPN (what the client sync imports when no clients group
+    // is configured). LDAP_SYNC_BASE_DN narrows where to look; LDAP_SYNC_FILTER leaves out service accounts.
+    // Their groups are not looked up here: the sync asks for the few groups it needs with listGroupMemberIds.
+    async function listUsers() {
+        const svc = await connect();
+        try {
+            await bindServiceAccount(svc);
+            const base = '(&(objectCategory=person)(objectClass=user)(|(mail=*)(userPrincipalName=*)))';
+            const filter = l.syncFilter ? `(&${base}${l.syncFilter})` : base;
+            const entries = await search(svc, l.syncBaseDn, filter, USER_ATTRIBUTES, { paged: true });
+
+            const profiles = [];
+            for (const entry of entries) {
+                if (isDisabled(entry.userAccountControl)) continue;
+                try {
+                    profiles.push(toProfile(entry, []));
+                } catch (err) {
+                    log.error(`LDAP sync skipped ${entry.dn}: ${err.message}`);   // an entry with no objectGUID must not stop the rest
+                }
+            }
+            return profiles;
+        } finally {
+            await safeUnbind(svc);
+        }
+    }
+
+    // Does the directory already know this email address? Used to stop someone registering a separate password
+    // account for an address that belongs to an organisation account.
+    async function emailExists(email) {
+        const svc = await connect();
+        try {
+            await bindServiceAccount(svc);
+            const e = escapeFilterValue(String(email).trim());
+            const found = await search(
+                svc, l.baseDn, `(&(objectCategory=person)(objectClass=user)(|(mail=${e})(userPrincipalName=${e})))`, ['objectGUID'],
+            );
+            return found.length > 0;
+        } finally {
+            await safeUnbind(svc);
+        }
+    }
+
+    return { name: 'ldap', authenticate, listGroupMembers, listGroupMemberIds, listUsers, emailExists };
 }
 
 module.exports = { createLdapProvider, BIND_FAILURES };

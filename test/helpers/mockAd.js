@@ -77,9 +77,12 @@ function startMockAd({ users = [], groups = [], servicePassword = 'service-secre
             attributes: Object.entries(entry.attributes).map(([type, v]) => new Attribute({ type, values: [].concat(v).filter((x) => x !== '') })),
         }));
 
+        // Like AD, leave out attributes that have no value (a presence filter such as (mail=*) must not match them).
+        const withoutEmpty = (attributes) => Object.fromEntries(Object.entries(attributes).filter(([, v]) => v !== undefined && v !== ''));
+
         const userEntry = (u) => ({
             dn: u.dn,
-            attributes: {
+            attributes: withoutEmpty({
                 objectClass: ['top', 'person', 'user'], objectCategory: 'person',
                 sAMAccountName: u.sam, userPrincipalName: u.upn, mail: u.mail,
                 givenName: u.given, sn: u.sn, displayName: `${u.given} ${u.sn}`,
@@ -87,7 +90,7 @@ function startMockAd({ users = [], groups = [], servicePassword = 'service-secre
                 employeeID: u.employeeId || '', userAccountControl: u.uac || '512',
                 objectGUID: guidBytes(u.guid),
                 memberOf: groups.filter((g) => g.members.map(lc).includes(lc(u.dn))).map((g) => g.dn),
-            },
+            }),
         });
 
         // Groups containing a user, through any depth:  (member:1.2.840.113556.1.4.1941:=<dn>)

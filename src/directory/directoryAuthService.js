@@ -15,7 +15,7 @@ const TICKET_TTL_SECONDS = 120;  // how long the front-end has to swap the ticke
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const AUDIENCES = ['staff', 'client'];
 
-function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }) {
+function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer, localAuth }) {
     const limiter = createAttemptLimiter(cfg.loginRateLimit);
     const ctx = { cfg, db, audit, email: mailer };
 
@@ -36,6 +36,16 @@ function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }
         const typed = String(username || '').trim();
         const key = `${typed.toLowerCase()}|${ip || ''}`;
         limiter.check(key);
+
+        // A client who registered here with a password may use it; a wrong one falls through to the directory.
+        if (audience === 'client') {
+            const local = await tryLocalClient(typed, password, ip);
+            if (local) {
+                limiter.clear(key);
+                await audit.logLoginAttempt(typed, ip, true);
+                return local;
+            }
+        }
 
         let profile;
         try {
@@ -158,19 +168,72 @@ function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }
         return users.openSession(type, account.rows[0], tokens);
     }
 
-    // ── sync: pull the people in the staff (and optional client) groups ─────────────────────────
+    // ── clients who keep their own password (AUTH_ALLOW_CLIENT_REGISTRATION=true) ──────────────
 
-    // Creates or updates staff from the role groups and switches off group-granted staff accounts whose
-    // person has left every group. Nothing changes in dryRun.
-    async function syncDirectory({ dryRun = false, force = false } = {}) {
-        if (!provider) throw new DirectoryError('NOT_CONFIGURED', 'Directory sync needs AUTH_PROVIDER=ldap or entra.');
+    const hybrid = () => cfg.allowClientRegistration && !!localAuth;
 
+    // A client portal sign-in with the email and password of an account registered here. Returns a session, or
+    // null when there is no such account or the password is wrong, so the caller carries on with the directory.
+    // Throws only for an account an Admin switched off.
+    async function tryLocalClient(typed, password, ip) {
+        if (!hybrid()) return null;
+        return localAuth.loginLocalClientIfPresent({ email: typed, password }, ip);
+    }
+
+    // Entra mode, client portal: the email + password form is for clients who registered here. Everyone else
+    // uses the Microsoft button.
+    async function localClientSignIn({ username, password, ip = null }) {
+        if (!hybrid()) throw new DirectoryError('BAD_REQUEST', 'Sign in with your Microsoft account.');
+        const typed = String(username || '').trim();
+        const key = `${typed.toLowerCase()}|${ip || ''}`;
+        limiter.check(key);
+
+        const session = await tryLocalClient(typed, password, ip);
+        if (session) {
+            limiter.clear(key);
+            await audit.logLoginAttempt(typed, ip, true);
+            return session;
+        }
+        limiter.fail(key);
+        await audit.logLoginAttempt(typed, ip, false);
+        throw new DirectoryError('INVALID_CREDENTIALS',
+            'Invalid email or password. If you have an organisation account, choose "Sign in with Microsoft".');
+    }
+
+    // Before a client registers with a password: refuse addresses that belong to an organisation account, who
+    // must use the organisation sign-in. If the directory cannot be asked, registration waits rather than guess.
+    async function assertEmailNotInDirectory(email) {
+        if (!provider?.emailExists) return;
+        const address = String(email || '').trim();
+        if (!address) return;
+        let exists;
+        try {
+            exists = await provider.emailExists(address);
+        } catch (err) {
+            if (err instanceof DirectoryError) {
+                throw new DirectoryError('REGISTRATION_UNAVAILABLE', 'Registration is not available right now. Please try again in a few minutes.');
+            }
+            throw err;
+        }
+        if (exists) {
+            throw new DirectoryError('USE_DIRECTORY_SIGN_IN',
+                'This email address belongs to an organisation account. Please sign in with your organisation account instead of registering.');
+        }
+    }
+
+    // ── sync: pull staff and clients in from the directory ──────────────────────────────────────
+
+    const SCOPES = ['staff', 'clients', 'all'];
+    const lower = (s) => String(s || '').trim().toLowerCase();
+
+    // Staff: creates or updates people in the role groups and switches off group-granted staff accounts whose
+    // person has left every group. `people` is filled with everyone found, keyed by directory id.
+    async function syncStaff({ dryRun, force, result, people }) {
         const roleGroups = STAFF_ROLE_PRIORITY.flatMap((role) => cfg.groups[role].map((group) => ({ role, group })));
         if (roleGroups.length === 0) {
             throw new DirectoryError('NOT_CONFIGURED', 'No staff groups are configured (AD_GROUP_ADMIN, AD_GROUP_MANAGER, AD_GROUP_FINANCE ...).');
         }
 
-        const people = new Map();   // directory id -> profile with every group it was found through
         for (const { group } of roleGroups) {
             for (const member of await provider.listGroupMembers(group)) {
                 const known = people.get(member.externalId);
@@ -184,8 +247,6 @@ function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }
         );
         const byExternal = new Map(existing.rows.filter((r) => r.external_id).map((r) => [r.external_id, r]));
         const byEmail = new Map(existing.rows.map((r) => [String(r.email).toLowerCase(), r]));
-
-        const result = { dryRun, created: 0, updated: 0, revoked: 0, errors: [], clientsProvisioned: 0 };
 
         const stale = existing.rows.filter((r) => r.role_source === 'directory_group' && !r.is_deleted && r.external_id && !people.has(r.external_id));
         if (people.size === 0 && stale.length > 0 && !force) {
@@ -224,24 +285,107 @@ function createDirectoryAuth({ cfg, provider, db, audit, tokens, email: mailer }
                 c.release();
             }
         }
+    }
 
-        // Optional: pre-create client accounts for the people in the clients group(s).
-        if (!dryRun) {
+    // The ids of everyone who holds a staff role, found without touching the staff accounts.
+    async function staffIdsOf(people) {
+        if (people.size > 0) return new Set(people.keys());
+        const ids = new Set();
+        for (const role of STAFF_ROLE_PRIORITY) {
+            for (const group of cfg.groups[role]) (await provider.listGroupMemberIds(group)).forEach((id) => ids.add(id));
+        }
+        return ids;
+    }
+
+    // Clients: with AD_GROUP_CLIENTS set, its members; otherwise every enabled person in the directory except the
+    // people who hold a staff role. They arrive as unverified clients, exactly as if they had signed in once:
+    // they still complete their profile and an Admin verifies them. No welcome emails are sent for an import.
+    async function syncClients({ dryRun, result, people }) {
+        const everyone = cfg.groups.clients.length === 0;
+        const summary = {
+            source: everyone ? 'everyone' : 'clients group',
+            found: 0, created: 0, linked: 0, updated: 0,
+            skippedStaff: 0, skippedDeactivated: 0, skippedNoEmail: 0,
+        };
+        result.clients = summary;
+
+        const candidates = new Map();
+        if (everyone) {
+            for (const profile of await provider.listUsers()) candidates.set(profile.externalId, profile);
+        } else {
             for (const group of cfg.groups.clients) {
                 for (const member of await provider.listGroupMembers(group)) {
-                    try {
-                        await users.provision({ ...member, groups: [...new Set([...member.groups, group])] }, 'client', ctx);
-                        result.clientsProvisioned++;
-                    } catch (err) {
-                        result.errors.push({ account: member.email || member.upn, message: err.message });
-                    }
+                    const known = candidates.get(member.externalId);
+                    candidates.set(member.externalId, {
+                        ...(known || member), groups: [...new Set([...(known?.groups || []), ...member.groups, group])],
+                    });
                 }
             }
         }
+        summary.found = candidates.size;
+
+        const staffIds = everyone ? await staffIdsOf(people) : new Set();
+        const magistrateIds = new Set();
+        for (const group of cfg.groups.magistrates) (await provider.listGroupMemberIds(group)).forEach((id) => magistrateIds.add(id));
+
+        const existing = await db.query(`SELECT client_user_id, email, external_id, auth_source, registration_status FROM client_user`);
+        const byExternal = new Map(existing.rows.filter((r) => r.external_id && r.auth_source === cfg.provider).map((r) => [r.external_id, r]));
+        const byEmail = new Map(existing.rows.map((r) => [lower(r.email), r]));
+
+        // No welcome email for each person in a bulk import.
+        const quietCtx = { ...ctx, email: null };
+
+        for (const profile of candidates.values()) {
+            const email = lower(profile.email || profile.upn);
+            if (!email) { summary.skippedNoEmail++; continue; }
+            if (staffIds.has(profile.externalId)) { summary.skippedStaff++; continue; }
+
+            const row = byExternal.get(profile.externalId) || byEmail.get(email);
+            if (row && row.registration_status === 'Deactivated') { summary.skippedDeactivated++; continue; }
+            if (row && row.external_id && row.auth_source === cfg.provider && row.external_id !== profile.externalId) {
+                result.errors.push({ account: email, message: 'This email is already linked to a different directory account.' });
+                continue;
+            }
+
+            if (!row) summary.created++;
+            else if (row.external_id && row.auth_source === cfg.provider) summary.updated++;
+            else summary.linked++;
+            if (dryRun) continue;
+
+            const groups = magistrateIds.has(profile.externalId) ? [...new Set([...profile.groups, ...cfg.groups.magistrates])] : profile.groups;
+            try {
+                await users.provision({ ...profile, groups }, 'client', quietCtx);
+                result.clientsProvisioned++;
+            } catch (err) {
+                result.errors.push({ account: email, message: err.message });
+            }
+        }
+    }
+
+    // scope: 'staff', 'clients' or 'all'. Left out, it does what it always did: staff, and clients too when
+    // AD_GROUP_CLIENTS is set. Nothing changes in dryRun, but every count is reported.
+    async function syncDirectory({ dryRun = false, force = false, scope } = {}) {
+        if (!provider) throw new DirectoryError('NOT_CONFIGURED', 'Directory sync needs AUTH_PROVIDER=ldap or entra.');
+        if (scope !== undefined && !SCOPES.includes(scope)) {
+            throw new DirectoryError('BAD_REQUEST', `scope must be one of ${SCOPES.join(', ')}.`);
+        }
+        const wantStaff = scope !== 'clients';
+        const wantClients = scope === 'clients' || scope === 'all' || (scope === undefined && cfg.groups.clients.length > 0);
+
+        const result = {
+            dryRun, scope: scope || 'default', created: 0, updated: 0, revoked: 0, errors: [], clientsProvisioned: 0, clients: null,
+        };
+        const people = new Map();   // directory id -> staff profile with every group it was found through
+
+        if (wantStaff) await syncStaff({ dryRun, force, result, people });
+        if (wantClients) await syncClients({ dryRun, result, people });
         return result;
     }
 
-    return { passwordSignIn, startEntraLogin, finishEntraLogin, exchangeTicket, syncDirectory };
+    return {
+        passwordSignIn, startEntraLogin, finishEntraLogin, exchangeTicket, syncDirectory,
+        localClientSignIn, assertEmailNotInDirectory,
+    };
 }
 
 module.exports = { createDirectoryAuth, roles };

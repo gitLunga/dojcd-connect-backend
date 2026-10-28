@@ -21,13 +21,22 @@ const people = [
     user({ given: 'Ada', sn: 'Admin',    sam: 'aadmin',    guid: guid(1), employeeId: '10000001', password: PASSWORD }),
     user({ given: 'Mia', sn: 'Manager',  sam: 'mmanager',  guid: guid(2), employeeId: '10000002', password: PASSWORD }),
     user({ given: 'Fay', sn: 'Finance',  sam: 'ffinance',  guid: guid(3), employeeId: '10000003', password: PASSWORD }),
-    user({ given: 'Pat', sn: 'Plain',    sam: 'pplain',    guid: guid(4), employeeId: '10000004', password: PASSWORD }),
+    user({ given: 'Pat', sn: 'Plain',    sam: 'pplain',    guid: guid(4), employeeId: '10000004', password: PASSWORD, department: 'Gauteng' }),
     user({ given: 'Dan', sn: 'Disabled', sam: 'ddisabled', guid: guid(5), employeeId: '10000005', password: PASSWORD, uac: '514' }),
+    // More people, so the client import has something to import:
+    user({ given: 'Joy',    sn: 'Advocate', sam: 'jadvocate', guid: guid(6), employeeId: '10000006', password: PASSWORD, department: 'Gauteng' }),
+    user({ given: 'Tebogo', sn: 'Advocate', sam: 'tadvocate', guid: guid(7), employeeId: '10000007', password: PASSWORD, department: 'Western Cape' }),
+    user({ given: 'Maggie', sn: 'Judge',    sam: 'mjudge',    guid: guid(8), employeeId: '10000008', password: PASSWORD, department: 'Gauteng' }),
+    // A service account: no email address and no UPN, so the client import leaves it out.
+    user({ given: 'Print',  sn: 'Service',  sam: 'svc-print', guid: guid(9), password: PASSWORD, mail: undefined, upn: undefined }),
 ];
-const [admin, manager, finance] = people;
+const [admin, manager, finance, , , , , judge] = people;
 
 const group = (cn, members) => ({ dn: `CN=${cn},OU=Groups,${BASE}`, cn, members: members.map((m) => m.dn) });
-const groups = [group('DOJCD-Admins', [admin]), group('DOJCD-Managers', [manager]), group('DOJCD-Finance', [finance])];
+const groups = [
+    group('DOJCD-Admins', [admin]), group('DOJCD-Managers', [manager]), group('DOJCD-Finance', [finance]),
+    group('DOJCD-Magistrates', [judge]),
+];
 
 (async () => {
     const ad = await startMockAd({ users: people, groups, servicePassword: 'service-secret', port: PORT });
@@ -45,6 +54,8 @@ LDAP_BASE_DN=${BASE}
 AD_GROUP_ADMIN=DOJCD-Admins
 AD_GROUP_MANAGER=DOJCD-Managers
 AD_GROUP_FINANCE=DOJCD-Finance
+AD_GROUP_SUPER_ADMIN=DOJCD-Admins
+AD_GROUP_MAGISTRATES=DOJCD-Magistrates
 AUTH_ALLOWED_REDIRECTS=http://localhost:3000/auth/callback,http://localhost:3001/auth/callback
 
 2. Sign in (every password is ${PASSWORD}):
@@ -54,6 +65,12 @@ AUTH_ALLOWED_REDIRECTS=http://localhost:3000/auth/callback,http://localhost:3001
    ffinance   Finance group   -> Finance
    pplain     no group        -> a client in the client portal (starts Pending), "no staff access" in the dashboard
    ddisabled  disabled        -> refused by the directory
+   jadvocate, tadvocate, mjudge (a magistrate), pplain
+                              -> clients: the "Sync from directory" button on the Client Users page imports them
+                                 (preview first). svc-print has no email, ddisabled is disabled: both are left out.
+
+Optional: add  AUTH_ALLOW_CLIENT_REGISTRATION=true  to .env to let a client outside this directory register with a
+password next to the organisation sign-in (an address that exists above, such as jadvocate@dojcd.gov.za, is refused).
 
    Try email, short name (aadmin) or EXAMPLE\\aadmin. A wrong password should say "Invalid username or password".
 `);

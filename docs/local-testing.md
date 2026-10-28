@@ -51,7 +51,7 @@ npm run dev
 
 Check http://localhost:5000/api/auth/config: it should say `"provider":"local"`.
 
-**Automated tests** (147 of them; the database ones create and drop throwaway databases, so the user needs CREATEDB):
+**Automated tests** (187 of them; the database ones create and drop throwaway databases, so the user needs CREATEDB):
 
 ```bash
 TEST_PG_HOST=localhost TEST_PG_USER=postgres TEST_PG_PASSWORD=<password> npm test
@@ -91,6 +91,8 @@ It prints the lines to put in `.env` (an `ldap` setup that points at the pretend
 - Admin dashboard: `aadmin` (Admin), `mmanager` (Manager) and `ffinance` (Finance) sign in; `pplain` is told they have no staff access; `ddisabled` is refused; a wrong password is refused. Try `aadmin`, `aadmin@dojcd.gov.za` and `EXAMPLE\aadmin`.
 - Client portal: sign in as `pplain`. A client appears (Pending) with no registration. Complete the profile, then verify them as an Admin.
 - Admin dashboard, Operational Users: the staff who signed in are listed; run `npm run sync-directory -- --dry-run`.
+- Admin dashboard, **Client Users**, *Sync from directory*: the preview shows the people it would import (`jadvocate`, `tadvocate`, `mjudge`, `pplain`; not the staff, not `ddisabled`, not `svc-print`). Run it: they appear as *Pending* with no email sent. Run it again: they are updated, not duplicated. The same from the command line: `npm run sync-directory -- --clients --dry-run`.
+- Optional registration: add `AUTH_ALLOW_CLIENT_REGISTRATION=true` to `.env`, restart, and open the client portal: *Create account* is back next to the organisation sign-in. Register with `someone@outside.example` (it works and that account signs in with its own password). Register with `jadvocate@dojcd.gov.za` (you are told to use the organisation sign-in).
 
 The pretend directory is not a real domain controller. It only shows that the application behaves; connecting the real one is `docs/directory-sign-in.md`.
 

@@ -86,7 +86,7 @@ describe('LDAP sign-in over HTTP (real PostgreSQL, mock Active Directory)', { sk
         const res = await call('GET', '/api/auth/config');
         assert.equal(res.status, 200);
         assert.deepEqual(res.json.data, {
-            provider: 'ldap', directory: true, loginMethod: 'password', selfRegistration: false, passwordManagedLocally: false,
+            provider: 'ldap', directory: true, loginMethod: 'password', selfRegistration: false, passwordManagedLocally: false, clientRegistration: false,
             usernameLabel: 'Email, user principal name or domain\\username',
         });
     });

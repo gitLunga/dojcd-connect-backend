@@ -8,6 +8,7 @@ const tokenService    = require('./tokenService');
 const auditService    = require('./auditService');
 const emailService    = require('./emailService');
 const passwordPolicy  = require('../utils/passwordPolicy');
+const { isDirectoryMode } = require('../directory/config');
 
 const RESET_TOKEN_TTL_MS  = 60 * 60 * 1000; // 1 hour
 const RESET_RATE_LIMIT_MS = 5  * 60 * 1000; // 1 request per 5 min per email
@@ -182,6 +183,35 @@ class AuthService {
         const refreshToken = await tokenService.generateRefreshToken(userResponse.client_user_id, 'Client');
 
         return { user: userResponse, accessToken, refreshToken };
+    }
+
+    // ── LOGIN CLIENT, directory modes with AUTH_ALLOW_CLIENT_REGISTRATION=true ──────────────────
+    // A client who registered here with a password. Returns a session, or null when there is no such account or
+    // the password is wrong, so the caller can carry on with the organisation sign-in. The caller records the attempt.
+    async loginLocalClientIfPresent({ email, password }, ipAddress = null) {
+        const typed = String(email || '').trim().toLowerCase();
+        if (!typed || typeof password !== 'string' || password.length === 0) return null;
+
+        const found = await db.query(
+            `SELECT * FROM client_user WHERE lower(email) = $1 AND auth_source = 'local' AND password_hash IS NOT NULL`, [typed]
+        );
+        if (found.rows.length === 0) return null;
+
+        const user = new ClientUser(found.rows[0]);
+        if (!(await bcrypt.compare(password, user.password_hash))) return null;
+        if (user.registration_status === 'Deactivated') {
+            const { DirectoryError } = require('../directory/errors');
+            await auditService.logLoginAttempt(typed, ipAddress, false);
+            throw new DirectoryError('ACCOUNT_DEACTIVATED', 'This account has been deactivated. Please contact an administrator.');
+        }
+
+        const userResponse = { ...user };
+        delete userResponse.password_hash;
+        return {
+            user: userResponse,
+            accessToken: tokenService.generateAccessToken(user.client_user_id, 'Client'),
+            refreshToken: await tokenService.generateRefreshToken(user.client_user_id, 'Client'),
+        };
     }
 
     // ── LOGIN OPERATIONAL ─────────────────────────────────────────────────────
@@ -380,7 +410,8 @@ class AuthService {
         if (clientResult.rows.length > 0) {
             userRow  = clientResult.rows[0];
             userType = 'Client';
-        } else {
+        } else if (!isDirectoryMode()) {
+            // With directory sign-in (clients may still hold a password) staff never reset one here.
             const opResult = await db.query(
                 `SELECT op_user_id AS id, first_name, email FROM operational_user WHERE email = $1 AND is_deleted = false AND auth_source = 'local'`,
                 [email]
@@ -434,6 +465,7 @@ class AuthService {
         if (tokenResult.rows.length === 0) throw new Error('Invalid or expired reset link.');
 
         const stored = tokenResult.rows[0];
+        if (isDirectoryMode() && stored.user_type !== 'Client') throw new Error('Invalid or expired reset link.');
         if (stored.used_at)                         throw new Error('This reset link has already been used.');
         if (new Date(stored.expires_at) < new Date()) throw new Error('This reset link has expired. Please request a new one.');
 

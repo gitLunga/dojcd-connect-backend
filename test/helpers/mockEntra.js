@@ -26,7 +26,7 @@ async function startMockEntra({ pageSize = 2, redirectUri = REDIRECT } = {}) {
 
     const codes = new Map();            // authorization code -> what the browser sign-in produced
     const accessTokens = new Map();     // access token -> user
-    const mock = { codes, signInAs: null, failGraph: false, failGroups: false, failKeys: false, tokenRequests: [], users: [], groupMembers: {} };
+    const mock = { codes, signInAs: null, failGraph: false, failGroups: false, failKeys: false, tokenRequests: [], users: [], userQueries: [], groupMembers: {} };
     let base = '';
 
     const issuer = () => `${base}/${TENANT}/v2.0`;
@@ -108,6 +108,16 @@ async function startMockEntra({ pageSize = 2, redirectUri = REDIRECT } = {}) {
             if (url.pathname === '/v1.0/me/transitiveMemberOf/microsoft.graph.group') {
                 if (mock.failGroups) return json(res, 503, {});
                 return page((who.groups || []).map((g) => ({ '@odata.type': '#microsoft.graph.group', ...g })), req, res, url.pathname);
+            }
+            // GET /users?$filter=accountEnabled eq true   |   mail eq 'x' or userPrincipalName eq 'x'
+            if (url.pathname === '/v1.0/users') {
+                mock.userQueries.push(url.searchParams.get('$filter') || '');
+                const f = url.searchParams.get('$filter') || '';
+                const m = /mail eq '(.*)' or userPrincipalName eq '/.exec(f);
+                const list = m
+                    ? mock.users.filter((u) => [u.mail, u.upn].some((v) => v && v.toLowerCase() === m[1].replace(/''/g, "'").toLowerCase()))
+                    : mock.users.filter((u) => u.accountEnabled !== false);
+                return page(list.map((u) => ({ ...graphUser(u), userType: u.userType || 'Member' })), req, res, url.pathname);
             }
             if (url.pathname === '/v1.0/groups') {
                 const m = /displayName eq '(.*)'/.exec(url.searchParams.get('$filter') || '');

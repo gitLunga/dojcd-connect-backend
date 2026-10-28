@@ -4,7 +4,7 @@ People no longer register. With directory sign-in, an account is created **autom
 
 | | Before (`AUTH_PROVIDER=local`) | After (`ldap` or `entra`) |
 |---|---|---|
-| Client (advocate, magistrate) | Registers with an email and a new password | Signs in with their organisation account; the account appears on first sign-in, then completes their profile and is verified by an Admin exactly as before |
+| Client (advocate, magistrate) | Registers with an email and a new password | Signs in with their organisation account; the account appears on first sign-in (or ahead of time, with the client import in section 6), then completes their profile and is verified by an Admin exactly as before. Clients who are **not** in the directory can still be allowed to register with a password (section 6b) |
 | Staff (Admin, Manager, Finance…) | An Admin adds them and emails a temporary password | They are in an AD group; the account appears on first sign-in. Admins can also pre-authorise someone by email |
 | Passwords | Kept here (bcrypt), reset by email | Never kept here. Forgot-password, change-password and the temporary-password step are switched off |
 | Roles | Chosen by an Admin | From AD groups (below), and/or chosen by an Admin |
@@ -131,14 +131,49 @@ UPDATE operational_user SET auth_source = 'local', external_id = NULL WHERE auth
 
 ## 6. Pulling users in: the sync
 
-Sign-in creates accounts on demand. The sync does it ahead of time for staff, and keeps it tidy:
+Sign-in creates accounts on demand. The sync does it ahead of time, so people already exist (and an Admin can see them) before their first sign-in, and keeps staff tidy. **There is no registration and no one-by-one creation: a department of 500 people is one click.**
 
 ```bash
-npm run sync-directory -- --dry-run     # shows what would change, changes nothing
-npm run sync-directory                  # creates/updates staff, switches off group-granted staff who left
+npm run sync-directory -- --dry-run             # staff: shows what would change, changes nothing
+npm run sync-directory                          # staff: creates/updates, switches off group-granted staff who left
+npm run sync-directory -- --clients --dry-run   # clients: what an import would do
+npm run sync-directory -- --clients             # clients: import everyone else in the directory
+npm run sync-directory -- --all                 # staff and clients
 ```
 
-The same is available to Admins as `POST /api/admin/directory/sync?dryRun=true`. If the directory returns **nobody** for the staff groups (wrong group name, connection problem), the sync refuses to switch everyone off unless you add `--force`. If `AD_GROUP_CLIENTS` is set, its members are also pre-created as clients. Schedule it with cron if you want group changes picked up without waiting for sign-ins. Entra needs the optional application permissions from 3a for this.
+In the admin dashboard the same thing is the **Sync from directory** button (Operational Users for staff, Client Users for clients). It always shows a preview first. In the API:
+
+`POST /api/admin/directory/sync?scope=staff|clients|all&dryRun=true|false&force=true|false` (Admin). Without `scope` it behaves as it always did: staff, plus the clients group's members when `AD_GROUP_CLIENTS` is set.
+
+**Staff.** Creates or updates the people in the role groups and switches off group-granted staff whose person has left every group. If the directory returns **nobody** for the staff groups (wrong group name, connection problem), the sync refuses to switch everyone off unless you add `--force`.
+
+**Clients.**
+* With `AD_GROUP_CLIENTS` set, the members of that group are imported. Otherwise **every enabled person in the directory who has an email address or UPN** is, except anyone who holds a staff role (they have a staff account; they can still use the client portal, which creates the client account on first sign-in).
+* They arrive exactly as if they had signed in once: an **unverified** client (name, email, phone and PERSAL number from the directory; user type *Magistrate* for members of `AD_GROUP_MAGISTRATES`, otherwise `DIRECTORY_DEFAULT_USER_TYPE`). They still complete their profile and an Admin verifies them, because that is where the contract details and documents are collected. **No welcome email is sent for an import.**
+* A client who had already registered with a password and has the same email is **linked**, keeping their verification, documents and applications. A deactivated client is left alone. An email that already belongs to a different directory account is reported in the result, never taken over.
+* Running it again only updates; nobody is duplicated. Someone who signs in later is the same account the import made.
+* Not imported: disabled accounts, accounts with no email address and no UPN, and (Entra) guest accounts.
+* To leave service accounts, shared mailboxes and the like out, narrow it: `LDAP_SYNC_BASE_DN` (an OU, for example `OU=Staff,DC=dojcd,DC=local`) and `LDAP_SYNC_FILTER` (an extra filter in brackets, for example `(department=*)`). Or put the real people in a group and set `AD_GROUP_CLIENTS`.
+* The result lists what was created, linked, updated and skipped, and any errors, for both the preview and the real run. Importing is not undone by a sync: use *deactivate* in the dashboard for a client who has left.
+
+Entra needs the optional application permissions from 3a (`User.Read.All`, `GroupMember.Read.All`) for any sync. Schedule it with cron if you want changes picked up without waiting for sign-ins, for example nightly: `30 2 * * * cd /path/to/backend && npm run sync-directory -- --all >> sync.log 2>&1`. A very large import (thousands) takes a while: run it from the command line rather than the dashboard if your reverse proxy times out after a minute.
+
+### 6b. Clients who are not in the directory (optional registration)
+
+Some clients, an external advocate for instance, may have no organisation account. To let them still register with their own password next to the organisation sign-in, set:
+
+```ini
+AUTH_ALLOW_CLIENT_REGISTRATION=true
+```
+
+* The client portal and the mobile app then show **Create account** next to the organisation sign-in. In `ldap` mode the one form takes either kind of account (a registered client's password is checked first, anything else goes to the domain controller). In `entra` mode there is the Microsoft button **and** an email/password form for registered clients.
+* Those clients are ordinary local accounts: forgot-password and change-password work for them, and only for them. **Staff never self-register and never reset a password here.**
+* **An address that exists in the directory cannot be registered with a password**: the person is told to use the organisation sign-in. This stops someone registering a password account for a colleague's address before that colleague first signs in. The check asks the directory at registration time, so if it cannot be reached, registration waits (it never guesses). With Entra this needs the `User.Read.All` application permission.
+* If a registered client later gets an organisation account, their first organisation sign-in takes over the same account (verification, documents and applications stay) and the old password stops working.
+* Failed sign-ins for these accounts count towards the same pause as organisation sign-ins (section 7).
+* Keep the scheduled client import running: once everyone in the directory exists here, their addresses are taken and cannot be registered by anyone else.
+
+Leave it off (the default) if everyone who needs the client portal is in the directory.
 
 ## 7. What is recorded
 
@@ -159,6 +194,8 @@ Every account created, linked or switched off by the directory is in the Audit L
 3. Sign in to the **admin dashboard** with someone in the Admin group: Operational Users lists them as Admin.
 4. Remove them from the group, run `npm run sync-directory`, confirm they are switched off.
 5. Try a wrong password five times (ldap): you see *Invalid username or password*, then a pause.
+6. Run the client import as a preview (`npm run sync-directory -- --clients --dry-run`), read the counts, then run it for real. Open *Client Users*: the people appear as *Pending*, and none of them received an email.
+7. If you turned on `AUTH_ALLOW_CLIENT_REGISTRATION`: register with an address that is **not** in the directory (it works), then with one that is (you are told to use the organisation sign-in).
 
 | Message code | Meaning |
 |---|---|
@@ -170,6 +207,8 @@ Every account created, linked or switched off by the directory is in the Audit L
 | `NO_EMAIL` | The directory account has neither `mail` nor a UPN |
 | `DIRECTORY_UNAVAILABLE` | The domain controller or Microsoft could not be reached, or the service account / client secret is wrong. See the server log |
 | `TOO_MANY_ATTEMPTS` | Paused after repeated failures |
+| `USE_DIRECTORY_SIGN_IN` | Someone tried to register with an address that belongs to an organisation account |
+| `REGISTRATION_UNAVAILABLE` | Registration needs to ask the directory whether the address is taken, and it could not be reached (Entra: is `User.Read.All` granted?) |
 
 ## 10. What has and has not been tested
 

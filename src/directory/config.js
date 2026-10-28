@@ -47,6 +47,9 @@ function loadDirectoryConfig(env = process.env) {
         },
         defaultUserType: env.DIRECTORY_DEFAULT_USER_TYPE === 'Magistrate' ? 'Magistrate' : 'Advocate',
         allowLocalAdminLogin: flag(env.AUTH_ALLOW_LOCAL_ADMIN_LOGIN, false),
+        // Clients who are not in the directory (an external advocate, say) may still register with their own
+        // password, next to the organisation sign-in. Staff never self-register. Off unless asked for.
+        allowClientRegistration: flag(env.AUTH_ALLOW_CLIENT_REGISTRATION, false),
         allowedRedirects: csv(env.AUTH_ALLOWED_REDIRECTS),
         loginRateLimit: {
             maxFailures: parseInt(env.AUTH_MAX_FAILED_LOGINS, 10) || 8,
@@ -68,6 +71,10 @@ function loadDirectoryConfig(env = process.env) {
             rejectUnauthorized: flag(env.LDAP_TLS_REJECT_UNAUTHORIZED, true),
             timeoutMs:      parseInt(env.LDAP_TIMEOUT_MS, 10) || 8000,
             persalAttribute: env.LDAP_ATTR_PERSAL || 'employeeID',
+            // Where "import everyone as clients" looks, and an optional extra filter to leave out service accounts
+            // and the like, for example  (department=*)  or  (&(department=*)(!(description=service*))).
+            syncBaseDn:     env.LDAP_SYNC_BASE_DN || env.LDAP_BASE_DN || '',
+            syncFilter:     String(env.LDAP_SYNC_FILTER || '').trim(),
         },
 
         entra: {
@@ -99,6 +106,9 @@ function validateDirectoryConfig(cfg) {
                 'Use ldaps://, or set LDAP_STARTTLS=true (or LDAP_ALLOW_INSECURE=true for a lab only).');
         }
         if (!l.userFilter.includes('{{username}}')) problems.push('LDAP_USER_FILTER must contain {{username}}');
+        if (l.syncFilter && !(l.syncFilter.startsWith('(') && l.syncFilter.endsWith(')'))) {
+            problems.push('LDAP_SYNC_FILTER must be a complete filter in brackets, for example (department=*)');
+        }
     }
 
     if (cfg.provider === 'entra') {

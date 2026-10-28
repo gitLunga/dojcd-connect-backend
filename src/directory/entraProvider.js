@@ -199,7 +199,31 @@ function createEntraProvider(cfg, { fetchImpl = globalThis.fetch, log = console 
         return members.filter((u) => u.accountEnabled !== false).map((u) => toProfile(u, { oid: u.id }, [group]));
     }
 
-    return { name: 'entra', endpoints, buildAuthorizeUrl, completeSignIn, listGroupMembers };
+    // Just the object ids of the people in a group (the sync uses them to decide who is a magistrate, who is staff).
+    async function listGroupMemberIds(group) {
+        return (await listGroupMembers(group)).map((p) => p.externalId);
+    }
+
+    // Every enabled member of the organisation (guests are left out; they can still sign in themselves).
+    async function listUsers() {
+        const token = await appToken();
+        const filter = encodeURIComponent('accountEnabled eq true');
+        const users = await graphPages(token, `/users?$filter=${filter}&$select=${PROFILE_FIELDS},userType&$top=999`);
+        return users
+            .filter((u) => u.userType !== 'Guest' && (u.mail || u.userPrincipalName))
+            .map((u) => toProfile(u, { oid: u.id }, []));
+    }
+
+    // Does the directory already know this email address? Needs the User.Read.All application permission.
+    async function emailExists(email) {
+        const token = await appToken();
+        const value = String(email).trim().replace(/'/g, "''");
+        const filter = encodeURIComponent(`mail eq '${value}' or userPrincipalName eq '${value}'`);
+        const found = await graphPages(token, `/users?$filter=${filter}&$select=id&$top=1`);
+        return found.length > 0;
+    }
+
+    return { name: 'entra', endpoints, buildAuthorizeUrl, completeSignIn, listGroupMembers, listGroupMemberIds, listUsers, emailExists };
 }
 
 module.exports = { createEntraProvider, createPkce, SIGN_IN_SCOPES, GUID };

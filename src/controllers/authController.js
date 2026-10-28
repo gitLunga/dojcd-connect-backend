@@ -2,11 +2,17 @@ const authService   = require('../services/authService');
 const tokenService  = require('../services/tokenService');
 const directoryController = require('./directoryController');
 const { isDirectoryMode } = require('../directory/config');
+const { getDirectoryAuth } = require('../directory');
+const { DirectoryError } = require('../directory/errors');
 
 class AuthController {
 
     async register(req, res) {
         try {
+            // With directory sign-in, clients outside the directory may still register, but an address that belongs
+            // to an organisation account must use the organisation sign-in.
+            if (isDirectoryMode()) await getDirectoryAuth().assertEmailNotInDirectory(req.body?.email);
+
             const { user, accessToken, refreshToken } = await authService.registerUser(req.body);
             return res.status(201).json({
                 success: true,
@@ -15,6 +21,7 @@ class AuthController {
                 timestamp: new Date().toISOString(),
             });
         } catch (error) {
+            if (error instanceof DirectoryError) return directoryController.sendError(res, error);
             console.error('Registration error:', error);
             return res.status(400).json({
                 success: false,

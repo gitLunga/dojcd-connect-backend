@@ -31,15 +31,20 @@ class DirectoryController {
     async passwordLogin(req, res, audience) {
         try {
             const cfg = getDirectoryConfig();
+            const username = req.body?.username ?? req.body?.email;
+            const ip = clientIp(req);
+
             if (cfg.provider === 'entra') {
+                // Staff always use Microsoft. Clients may also hold a password registered here, if that is allowed.
+                if (audience === 'client' && cfg.allowClientRegistration) {
+                    const session = await getDirectoryAuth().localClientSignIn({ username, password: req.body?.password, ip });
+                    return sendSession(res, session, 'Login successful');
+                }
                 return res.status(400).json({
                     success: false, code: 'USE_MICROSOFT_SIGN_IN',
                     message: 'Sign in with your Microsoft account.', data: null, timestamp: new Date().toISOString(),
                 });
             }
-
-            const username = req.body?.username ?? req.body?.email;
-            const ip = clientIp(req);
 
             if (audience === 'staff' && cfg.allowLocalAdminLogin) {
                 const local = await authService.loginLocalBreakGlassAdmin({ email: username, password: req.body?.password }, ip);
@@ -96,12 +101,13 @@ class DirectoryController {
         }
     }
 
-    // POST /api/admin/directory/sync?dryRun=true|false&force=true|false  (Admin)
+    // POST /api/admin/directory/sync?dryRun=true|false&force=true|false&scope=staff|clients|all  (Admin)
     async sync(req, res) {
         try {
             const result = await getDirectoryAuth().syncDirectory({
                 dryRun: String(req.query.dryRun ?? req.body?.dryRun) === 'true',
                 force: String(req.query.force ?? req.body?.force) === 'true',
+                scope: req.query.scope ?? req.body?.scope,
             });
             return res.status(200).json({
                 success: true,
@@ -115,3 +121,4 @@ class DirectoryController {
 }
 
 module.exports = new DirectoryController();
+module.exports.sendError = sendError;

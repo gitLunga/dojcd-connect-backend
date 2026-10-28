@@ -20,6 +20,7 @@ function getDirectoryAuth() {
         audit: require('../services/auditService'),
         tokens: require('../services/tokenService'),
         email: require('../services/emailService'),
+        localAuth: require('../services/authService'),
     });
     return instance;
 }
@@ -33,6 +34,10 @@ function publicAuthConfig(cfg = getDirectoryConfig()) {
         loginMethod: cfg.provider === 'entra' ? 'microsoft' : 'password',
         selfRegistration: !directory,
         passwordManagedLocally: !directory,
+        // The client portal: may a client register with their own password (next to the organisation sign-in)?
+        // In "entra" mode this means the Microsoft button AND an email/password form; in "ldap" mode the one form
+        // takes either kind of account. Always true in local mode.
+        clientRegistration: !directory || cfg.allowClientRegistration,
         usernameLabel: cfg.provider === 'ldap' ? 'Email, user principal name or domain\\username' : 'Email',
     };
 }

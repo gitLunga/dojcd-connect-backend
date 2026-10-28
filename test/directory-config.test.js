@@ -58,3 +58,35 @@ test('an empty clients group lets every directory user in; a set one limits it',
     assert.equal(roles.isClientAllowed(['other'], limited), false);
     assert.equal(roles.isClientAllowed(['dojcd-clients'], limited), true);
 });
+
+test('clients registering with a password is off unless asked for, and only an explicit true turns it on', () => {
+    assert.equal(loadDirectoryConfig({ AUTH_PROVIDER: 'ldap' }).allowClientRegistration, false);
+    assert.equal(loadDirectoryConfig({ AUTH_PROVIDER: 'ldap', AUTH_ALLOW_CLIENT_REGISTRATION: 'yes' }).allowClientRegistration, false);
+    assert.equal(loadDirectoryConfig({ AUTH_PROVIDER: 'ldap', AUTH_ALLOW_CLIENT_REGISTRATION: 'TRUE' }).allowClientRegistration, true);
+});
+
+test('the client import searches the whole directory unless narrowed, and the extra filter must be in brackets', () => {
+    const base = { AUTH_PROVIDER: 'ldap', LDAP_URL: 'ldaps://dc.x:636', LDAP_BIND_DN: 'cn=s', LDAP_BIND_PASSWORD: 'p', LDAP_BASE_DN: 'DC=x' };
+    const plain = loadDirectoryConfig(base);
+    assert.equal(plain.ldap.syncBaseDn, 'DC=x');
+    assert.equal(plain.ldap.syncFilter, '');
+    assert.deepEqual(validateDirectoryConfig(plain), []);
+
+    const narrowed = loadDirectoryConfig({ ...base, LDAP_SYNC_BASE_DN: 'OU=Staff,DC=x', LDAP_SYNC_FILTER: ' (department=*) ' });
+    assert.equal(narrowed.ldap.syncBaseDn, 'OU=Staff,DC=x');
+    assert.equal(narrowed.ldap.syncFilter, '(department=*)');
+    assert.deepEqual(validateDirectoryConfig(narrowed), []);
+
+    const broken = validateDirectoryConfig(loadDirectoryConfig({ ...base, LDAP_SYNC_FILTER: 'department=*' }));
+    assert.equal(broken.length, 1);
+    assert.match(broken[0], /LDAP_SYNC_FILTER must be a complete filter in brackets/);
+});
+
+test('the sync script understands --clients and --all, and refuses both at once', () => {
+    const { parseSyncArgs } = require('../src/scripts/sync-directory');
+    assert.deepEqual(parseSyncArgs([]), { dryRun: false, force: false });
+    assert.deepEqual(parseSyncArgs(['--dry-run', '--clients']), { dryRun: true, force: false, scope: 'clients' });
+    assert.deepEqual(parseSyncArgs(['--all', '--force']), { dryRun: false, force: true, scope: 'all' });
+    assert.throws(() => parseSyncArgs(['--clients', '--all']), /either --clients or --all/);
+    assert.throws(() => parseSyncArgs(['--everyone']), /Unknown option/);
+});
